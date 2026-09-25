@@ -100,6 +100,19 @@ function asPostcode(t){
   t=[...t].map(c=>FIX[c]??c).join('');
   return /^[1-9]\d{4}$/.test(t)?t:null;
 }
+// ลำดับ of the row in the scanned document: the leftmost small number on the same line, left of the postcode
+function rowNumber(pw,words){
+  const P=pw.bbox, pcy=(P.y0+P.y1)/2, ph=P.y1-P.y0;
+  let best=null;
+  for(const w of words){
+    const t=w.text.replace(/[^\d]/g,''); if(t!==w.text.replace(/[.)\]]$/,'')||!/^\d{1,3}$/.test(t)||+t===0) continue;
+    const B=w.bbox; if(B.x1>P.x0) continue;
+    const dx=P.x0-B.x1, cy=(B.y0+B.y1)/2;
+    if(Math.abs(cy-pcy)>0.7*Math.max(ph,B.y1-B.y0)+0.03*dx) continue;
+    if(!best||B.x0<best.bbox.x0) best=w;
+  }
+  return best?+best.text.replace(/[^\d]/g,''):null;
+}
 function srcSize(){ return mode==='cam'?[video.videoWidth,video.videoHeight]:[still.naturalWidth,still.naturalHeight]; }
 function toScreen(b){
   const [sw,sh]=srcSize(), W=ov.clientWidth, H=ov.clientHeight;
@@ -117,12 +130,13 @@ async function scanOnce(filter=FILTERS[0]){
   gctx.drawImage(mode==='cam'?video:still,0,0,grab.width,grab.height);
   const {data}=await worker.recognize(grab);
   const now=performance.now(); let fresh=false;
-  for(const w of data.words||[]){
-    if(w.confidence<35) continue;
+  const words=(data.words||[]).filter(w=>w.confidence>=35);
+  for(const w of words){
     const code=asPostcode(w.text); if(!code||!BY_CODE[code]) continue;   // only remote-area codes get a box
     const b={x0:w.bbox.x0/s,y0:w.bbox.y0/s,x1:w.bbox.x1/s,y1:w.bbox.y1/s};
+    const row=rowNumber(w,words);
     const prev=dets.find(d=>d.code===code&&Math.abs(d.b.x0-b.x0)<200&&Math.abs(d.b.y0-b.y0)<200);
-    if(prev){ prev.target=b; prev.t=now; } else { dets.push({code,b:{...b},target:b,t:now}); }
+    if(prev){ prev.target=b; prev.t=now; if(row!=null) prev.row=row; } else { dets.push({code,b:{...b},target:b,t:now,row}); }
     if(!seen.has(code)){ seen.add(code); fresh=true; }
   }
   dets=dets.filter(d=>mode!=='cam'||now-d.t<1500);
@@ -147,7 +161,7 @@ function draw(ts){
     ctx.strokeStyle='#ffb020'; ctx.lineWidth=3; rr(r.x,r.y,r.w,r.h,6); ctx.stroke();
     ctx.fillStyle='rgba(255,176,32,.15)'; ctx.fill(); ctx.shadowBlur=0;
     const list=BY_CODE[d.code], e=list[0];
-    const t1=`#${list.map(x=>x.seq).join('/')} ${e.office} · ${e.prov}`;
+    const t1=(d.row!=null?`ลำดับ ${d.row} · `:'')+`${e.office} · ${e.prov}`;
     const t2=list.some(x=>x.area)?'⚠ '+list.map(x=>x.area.replace('เฉพาะ','')).join(' / '):'';
     ctx.font='700 14px "IBM Plex Sans Thai",sans-serif';
     let lw=ctx.measureText(t1).width;
