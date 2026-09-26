@@ -35,6 +35,9 @@ button.on{border-color:var(--amber);color:var(--amber)}
 #strip span.wait{background:rgba(0,0,0,.7);color:#fff}
 
 /* session sheet */
+#review{position:fixed;inset:0;background:rgba(0,0,0,.6);display:flex;align-items:flex-end;justify-content:center;z-index:7}
+#review .in{width:100%;max-width:560px;max-height:92%;overflow:auto;background:var(--sheet);border-radius:18px 18px 0 0;padding:16px 16px calc(env(safe-area-inset-bottom,0px) + 20px)}
+.item.pick.sel{outline:2px solid var(--amber)}
 #sheet{position:fixed;inset:0;background:rgba(0,0,0,.6);display:flex;align-items:flex-end;justify-content:center;z-index:5}
 #sheet .in{width:100%;max-width:560px;max-height:90%;overflow:auto;background:var(--sheet);border-radius:18px 18px 0 0;padding:16px 16px calc(env(safe-area-inset-bottom,0px) + 20px)}
 .hd{display:flex;align-items:center;gap:8px;margin-bottom:12px}
@@ -82,6 +85,10 @@ button.on{border-color:var(--amber);color:var(--amber)}
 .cells i{width:9px;height:9px;border-radius:2px;background:rgba(255,255,255,.14)}
 .cells i.ok{background:var(--green)} .cells i.rm{background:var(--amber)} .cells i.q{background:transparent;outline:1px solid var(--red)}
 .cells.big{gap:3px} .cells.big i{width:14px;height:14px;border-radius:3px}
+#shoot{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(env(safe-area-inset-bottom,0px) + 112px);width:74px;height:74px;border-radius:50%;padding:0;background:rgba(255,255,255,.18);border:4px solid #fff;box-shadow:0 0 0 3px rgba(0,0,0,.35)}
+#shoot::after{content:'';position:absolute;inset:6px;border-radius:50%;background:#fff}
+#shoot.busy{border-color:var(--amber)} #shoot.busy::after{background:var(--amber);animation:pulse .8s infinite alternate}
+@keyframes pulse{to{opacity:.35}}
 #toast{position:fixed;left:50%;top:calc(env(safe-area-inset-top,0px) + 70px);transform:translateX(-50%);max-width:92%;padding:10px 16px;border-radius:12px;background:#fff;color:#000;font-weight:700;font-size:15px;z-index:6;text-align:center;box-shadow:0 6px 30px rgba(0,0,0,.5)}
 #toast.ok{background:var(--green)}
 .sheetrow .cells{margin-top:6px}
@@ -103,10 +110,13 @@ button.on{border-color:var(--amber);color:var(--amber)}
 </div>
 <div id="msg" hidden></div>
 <div id="strip" hidden></div>
+<button id="shoot" hidden aria-label="ถ่ายเก็บข้อมูลหน้านี้"></button>
 <button id="cov" hidden aria-label="ดูความคืบหน้าของใบนำส่ง"></button>
 <div id="toast" hidden></div>
+<div id="review" hidden><div class="in" id="reviewIn"></div></div>
 <div id="sheet" hidden><div class="in" id="sheetIn"></div></div>
 <input type="file" id="file" accept="image/*" multiple hidden>
+<input type="file" id="snap" accept="image/*" capture="environment" hidden>
 
 <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js"></script>
 <script>
@@ -231,16 +241,16 @@ function routeScore(sh,rows){
   }
   return {m,c};
 }
-function route(S,rows){
-  const A=activeSheet(S);
-  if(!rows.length) return {sh:A};
-  let best=null;
-  for(const sh of S.sheets){ const sc=routeScore(sh,rows); if(sc.m>=2&&sc.m>sc.c&&(!best||sc.m>best.m)) best={sh,...sc}; }
-  if(best){ if(best.sh.done) return {sh:best.sh,skip:true}; if(best.sh.id!==A.id){ S.active=best.sh.id; toast(`สลับไปใบที่ ${best.sh.no}`); } return {sh:best.sh}; }
-  const sa=routeScore(A,rows);
-  if(sheetEmpty(A)) return {sh:A};
-  if(A.done||sa.c>=2){ if(rows.length<2) return {sh:null}; const n=newSheet(S); toast(`เริ่มใบที่ ${n.no}`); return {sh:n}; }
-  return {sh:A};
+// Suggest which manifest a capture belongs to, with the reason. Nothing is switched or created here.
+function suggest(S,rows){
+  const A=activeSheet(S), opts=S.sheets.filter(sh=>!sheetEmpty(sh)||sh.id===A.id).map(sh=>({sh,...routeScore(sh,rows)}));
+  const best=opts.filter(o=>o.m>=2&&o.m>o.c).sort((a,b)=>b.m-a.m)[0];
+  if(best) return {opts,target:best.sh.id,why:`ตรงกับใบที่ ${best.sh.no} ${best.m} จุด${best.c?` (ไม่ตรง ${best.c})`:''}${best.sh.done?' — ใบนี้ครบแล้ว ข้อมูลนี้ซ้ำ':''}`};
+  if(sheetEmpty(A)) return {opts,target:A.id,why:`ใบที่ ${A.no} ยังว่าง`};
+  const sa=opts.find(o=>o.sh.id===A.id);
+  if(sa.c>=3) return {opts,target:'new',why:`ลำดับเดียวกับใบที่ ${A.no} แต่รหัส/เลขสิ่งของไม่ตรง ${sa.c} จุด — น่าจะเป็นใบใหม่`};
+  if(A.done) return {opts,target:'new',why:`ใบที่ ${A.no} ครบแล้ว — น่าจะเป็นใบถัดไป`};
+  return {opts,target:A.id,why:`ลำดับไม่ซ้ำกับที่มี — น่าจะเป็นหน้าต่อของใบที่ ${A.no}`};
 }
 
 /* ---- UI: progress bar over the camera + toast ---- */
@@ -285,7 +295,13 @@ function asSerial(t){   // 13-character item number, e.g. EQ420949020TH → runn
 // misread ลำดับ (1 read as nothing, 31 read as 3) still gets the right number.
 const median=a=>{ const b=[...a].sort((x,y)=>x-y); return b.length?b[b.length>>1]:null; };
 function tableRows(words){
-  const W=words.map(w=>{ const b=w.bbox; return {w,t:w.text.trim(),b,cy:(b.y0+b.y1)/2,h:b.y1-b.y0}; }).filter(x=>x.t);
+  const W=words.map(w=>{ const b=w.bbox; return {w,t:w.text.trim(),b,cx:(b.x0+b.x1)/2,cy:(b.y0+b.y1)/2,h:b.y1-b.y0}; }).filter(x=>x.t);
+  // straighten a tilted photo: postcode and item number sit side by side on one row, so their dy/dx is the tilt
+  const P=W.filter(x=>asPostcode(x.t)), T=W.filter(x=>asSerial(x.t)!=null), sl=[];
+  for(const p of P){ const t=T.filter(t=>t.cx>p.cx&&t.cx-p.cx<p.h*20).sort((a,b)=>Math.abs(a.cy-p.cy)-Math.abs(b.cy-p.cy))[0];
+    if(t&&Math.abs(t.cy-p.cy)<p.h*1.2) sl.push((t.cy-p.cy)/(t.cx-p.cx)); }
+  const tilt=sl.length>=3?median(sl):0;
+  if(tilt) for(const x of W){ x.cy-=tilt*x.cx; x.b={x0:x.b.x0,x1:x.b.x1,y0:x.b.y0-tilt*x.cx,y1:x.b.y1-tilt*x.cx}; }
   const next=(a,dir)=>{ let best=null;
     for(const x of W){ if(x===a) continue;
       const dx=dir>0?x.b.x0-a.b.x1:a.b.x0-x.b.x1; if(dx<-a.h*.3) continue;
@@ -321,15 +337,17 @@ function tableRows(words){
     }else r.seq=r.readSeq;
   }
   const good=rows.filter(r=>r.seq!=null&&r.seq>0&&r.seq<1000);
+  const fitOk=inl.length>=3&&inl.length>=0.6*anchors.length;
 
   // "รวมเงิน": a money value that is not on any row and bigger than every row price
   const onRow=new Set(rows.flatMap(r=>r.line));
   const maxP=Math.max(0,...good.map(r=>r.price||0));
-  const totals=W.filter(x=>!onRow.has(x)).map(x=>({x,m:asMoney(x.t)})).filter(o=>o.m!=null&&o.m>maxP&&o.m>=100);
+  const lowest=Math.max(0,...good.map(r=>r.y)), pageSum=good.reduce((t,r)=>t+(r.price||0),0);
+  const totals=W.filter(x=>!onRow.has(x)&&x.cy>lowest).map(x=>({x,m:asMoney(x.t)})).filter(o=>o.m!=null&&o.m>maxP&&o.m>=100&&o.m>=pageSum);
   const tot=totals.sort((a,b)=>b.m-a.m)[0];
   // the last row of the manifest is the one right above the total
   const lastSeq=tot?good.filter(r=>r.y<tot.x.cy).reduce((m,r)=>Math.max(m,r.seq),0)||null:null;
-  return {rows:good,total:tot?.m??null,lastSeq};
+  return {rows:good,total:tot?.m??null,lastSeq,fitOk};
 }
 
 function srcSize(){ return mode==='cam'?[video.videoWidth,video.videoHeight]:[still.naturalWidth,still.naturalHeight]; }
@@ -354,51 +372,115 @@ function drawRotated(src,sw,sh,s,rot,filter){
 
 // each preprocessing catches different digits, so passes rotate through them
 const FILTERS=['grayscale(1) contrast(1.35)','grayscale(1) contrast(2)','none'];
-async function readFrame(filter,rot){
-  const [sw,sh]=srcSize(); if(!sw) return null;
-  const s=Math.min(1,(mode==='cam'?1600:2400)/Math.max(sw,sh));   // never enlarge: upscaled photos read worse
-  const toSrc=drawRotated(mode==='cam'?video:still,sw,sh,s,rot,filter);
+async function readFrame(filter,rot,src){
+  const el=src?.el??(mode==='cam'?video:still), [sw,sh]=src?[src.w,src.h]:srcSize(); if(!sw) return null;
+  const s=Math.min(1,(mode==='cam'&&!src?1600:2400)/Math.max(sw,sh));   // never enlarge: upscaled photos read worse
+  const toSrc=drawRotated(el,sw,sh,s,rot,filter);
   const {data}=await worker.recognize(grab);
   const words=(data.words||[]).filter(w=>w.confidence>=35);
   return {words,toSrc,tr:tableRows(words),pcs:words.filter(w=>asPostcode(w.text)).length};
 }
-function applyFrame(f){
+// Boxes only — the live camera never writes to the session (a blurry or moving frame would spoil the data).
+function showBoxes(f,capRows){
   const now=performance.now(); let fresh=false;
-  const S=cur(), {words,toSrc,tr}=f;
-  const rt=route(S,tr.rows);
-  if(rt.sh&&!rt.skip){
-    const sh=rt.sh;
-    for(const r of tr.rows){
-      const row=(sh.rows[r.seq] ||= {price:{},code:{},trk:{}}); row.trk ||= {};
-      // postal charges end in .00/.25/.50/.75; an odd satang is usually a misread digit, so it counts less
-      if(r.price!=null){ const k=r.price.toFixed(2); inc(row.price,k,/\.(00|25|50|75)$/.test(k)?1:0.3); }
-      if(r.code) inc(row.code,r.code);
-      if(r.serial!=null) inc(row.trk,r.serial);
-    }
-    if(tr.total!=null){ inc(sh.totals,tr.total.toFixed(2)); if(tr.lastSeq) inc(sh.last,tr.lastSeq); }
-    checkDone(sh);
-  }
-  if(rt.skip&&now-lastSkipMsg>4000){ lastSkipMsg=now; toast(`ใบที่ ${rt.sh.no} สแกนครบแล้ว — ไม่นับซ้ำ`); }
-
-  const rowOf=new Map(tr.rows.filter(r=>r.codeWord).map(r=>[r.codeWord,r]));
-  for(const w of words){
+  const rowOf=new Map(f.tr.rows.filter(r=>r.codeWord).map(r=>[r.codeWord,r]));
+  for(const w of f.words){
     const code=asPostcode(w.text); if(!code||!BY_CODE[code]) continue;   // only remote-area codes get a box
-    const b=toSrc(w.bbox);
-    const r=rowOf.get(w), row=r?.seq??null, no=rt.sh?.no??null;
-    if(row==null) inc(S.loose,code);                  // e.g. a single parcel label
+    const b=f.toSrc(w.bbox), r=rowOf.get(w), row=r?.seq??null;
+    if(capRows&&row!=null&&capRows.get(row)?.code&&capRows.get(row).code!==code) continue;   // one-off misread in this photo
     const prev=dets.find(d=>d.code===code&&Math.abs(d.b.x0-b.x0)<200&&Math.abs(d.b.y0-b.y0)<200);
-    if(prev){ prev.target=b; prev.t=now; if(row!=null){prev.row=row;prev.no=no;} } else { dets.push({code,b:{...b},target:b,t:now,row,no}); }
+    if(prev){ prev.target=b; prev.t=now; if(row!=null) prev.row=row; } else { dets.push({code,b:{...b},target:b,t:now,row}); }
     if(!seen.has(code)){ seen.add(code); fresh=true; }
   }
-  if(tr.rows.length||tr.total!=null||dets.length){ S.updated=Date.now(); persist(); refreshUI(); }
-
   dets=dets.filter(d=>mode!=='cam'||now-d.t<1500);
   if(fresh||(dets.length&&now-lastBeep>4000)){ if(dets.length){ beep(); lastBeep=now; } }
+  // which rows in view are already saved in the manifest being scanned
+  let saved=0, inView=0;
+  if(mode==='cam'&&!capRows){
+    const A=activeSheet(cur());
+    live=f.tr.fitOk?f.tr.rows.map(r=>{ const row=A.rows[r.seq]; const ok=!!row&&topVote(row.code)===r.code&&(row.manual!=null||topVote(row.price)!=null);
+      inView++; if(ok) saved++; return {b:f.toSrc(r.codeWord.bbox),ok,seq:r.seq}; }):[];
+    liveT=now;
+  }
   const n=dets.length, st=$('status');
-  st.textContent=n?`พบพื้นที่ห่างไกล ${n} จุด`:(mode==='cam'?'กำลังสแกน…':'ไม่พบรหัสพื้นที่ห่างไกล');
+  st.textContent=n?`พบพื้นที่ห่างไกล ${n} จุด`:(mode==='cam'?(inView?`ในภาพ ${inView} แถว · เก็บแล้ว ${saved}`:'กำลังสแกน…'):'ไม่พบรหัสพื้นที่ห่างไกล');
   st.className='chip'+(n?' hit':'');
 }
-let lastSkipMsg=0;
+const okSatang=v=>/\.(00|25|50|75)$/.test(v.toFixed(2));
+// One deliberate capture = 3 readings of the same sharp image, merged before anything is saved.
+function consolidate(frames){
+  const L={}, totals={}, last={};
+  const okFrames=frames.filter(f=>f.tr.fitOk);
+  const unsure=okFrames.length*2<frames.length;
+  for(const f of (okFrames.length?okFrames:frames)){
+    for(const r of f.tr.rows){ const o=(L[r.seq] ||= {code:{},price:{},serial:{},n:0}); o.n++;
+      if(r.code) inc(o.code,r.code); if(r.price!=null) inc(o.price,r.price.toFixed(2),okSatang(r.price)?1:0.3); if(r.serial!=null) inc(o.serial,r.serial); }
+    if(f.tr.total!=null&&okSatang(f.tr.total)){ inc(totals,f.tr.total.toFixed(2)); if(f.tr.lastSeq) inc(last,f.tr.lastSeq); }
+  }
+  const rows=Object.entries(L).map(([k,o])=>({seq:+k,code:topVote(o.code),price:topVote(o.price)!=null?+topVote(o.price):null,serial:topVote(o.serial)!=null?+topVote(o.serial):null,n:o.n}))
+    .filter(r=>r.code).sort((a,b)=>a.seq-b.seq);
+  // keep one run of row numbers: drop stray numbers far away from the rest (a misfit, e.g. 121 on a 37-row page)
+  if(rows.length>=4){ const m=median(rows.map(r=>r.seq)), span=rows.length*1.6+5; for(let i=rows.length-1;i>=0;i--) if(Math.abs(rows[i].seq-m)>span) rows.splice(i,1); }
+  return {rows,unsure,total:topVote(totals)!=null?+topVote(totals):null,lastSeq:topVote(last)!=null?+topVote(last):null,map:new Map(rows.map(r=>[r.seq,r]))};
+}
+function checkCapture(cap){
+  if(cap.rows.length<3&&cap.total==null) return 'อ่านได้น้อยเกินไป — ถ่ายใหม่ให้เห็นทั้งหน้า ชัด ไม่เอียง';
+  if(cap.unsure) return 'ภาพไม่ชัดพอ อ่านเลขลำดับไม่ลงตัว — ไม่บันทึก ถ่ายใหม่ให้ตรงและใกล้ขึ้น';
+  return null;
+}
+function saveTo(sh,cap){
+  const S=cur();
+  for(const r of cap.rows){
+    const row=(sh.rows[r.seq] ||= {price:{},code:{},trk:{}}); row.trk ||= {};
+    if(r.price!=null) inc(row.price,r.price.toFixed(2),okSatang(r.price)?1:0.3);
+    inc(row.code,r.code);
+    if(r.serial!=null) inc(row.trk,r.serial);
+  }
+  if(cap.total!=null){ inc(sh.totals,cap.total.toFixed(2)); if(cap.lastSeq) inc(sh.last,cap.lastSeq); }
+  S.active=sh.id; S.updated=Date.now(); persist();
+  const was=sh.done; checkDone(sh); refreshUI();
+  if(!was&&!sh.done) toast(`บันทึกลงใบที่ ${sh.no} แล้ว`);
+}
+// Show what one capture read and let the user pick the manifest before anything is saved.
+function review(cap){
+  return new Promise(done=>{
+    const S=cur(), sg=suggest(S,cap.rows); let pick=sg.target;
+    const seqs=cap.rows.map(r=>r.seq), lo=seqs.length?Math.min(...seqs):0, hi=seqs.length?Math.max(...seqs):0;
+    const by=cap.map, sum=cap.rows.reduce((t,r)=>t+Math.round((r.price||0)*100),0)/100;
+    let cells=''; for(let i=lo;i<=hi&&hi;i++){ const r=by.get(i); cells+=`<i class="${!r?'':r.price==null||!okSatang(r.price)?'q':BY_CODE[r.code]?'rm':'ok'}" title="${i}"></i>`; }
+    const gaps=[]; for(let i=lo;i<=hi&&hi;i++) if(!by.get(i)) gaps.push(i);
+    const noP=cap.rows.filter(r=>r.price==null).map(r=>r.seq);
+    const rem=cap.rows.filter(r=>BY_CODE[r.code]);
+    const render=()=>{
+      const tgt=pick==='new'?null:S.sheets.find(x=>x.id===pick), dup=tgt?.done;
+      $('reviewIn').innerHTML=`<div class="hd"><b style="flex:1;font-size:18px">ตรวจผลก่อนบันทึก</b></div>
+        <div class="tot"><div><small>อ่านได้</small><b>${cap.rows.length} แถว</b><small>${hi?`ลำดับ ${lo}–${hi}`:''}</small></div>
+          <div><small>ค่าบริการในภาพนี้</small><b>฿${baht(sum)}</b><small>${cap.total!=null?`รวมเงินในใบ ฿${baht(cap.total)}`:'ภาพนี้ไม่มียอดรวม'}</small></div></div>
+        ${hi?`<div class="cells big" style="margin-top:10px">${cells}</div><small style="color:var(--muted);font-size:12px">เขียว = อ่านได้ · ส้ม = ห่างไกล · กรอบแดง = ราคาไม่ชัด · เทา = อ่านไม่ได้</small>`:''}
+        ${gaps.length||noP.length?`<div class="verdict wait" style="margin-top:8px">${gaps.length?`อ่านไม่ได้ ลำดับ ${gaps.join(', ')}`:''}${gaps.length&&noP.length?' · ':''}${noP.length?`ไม่เห็นราคา ลำดับ ${noP.join(', ')}`:''}<small>บันทึกได้ แล้วค่อยถ่ายเพิ่ม หรือแตะช่องในใบเพื่อพิมพ์เอง</small></div>`:''}
+        ${rem.length?`<div class="sec">พื้นที่ห่างไกลในภาพนี้</div><div class="list">${rem.map(r=>{const e=BY_CODE[r.code];return `<div class="item remote"><div><b>ลำดับ ${r.seq} · ${r.code}</b><small>${esc(e[0].office)} · ${esc(e[0].prov)}</small></div><span class="r">฿${baht(r.price)}</span></div>`;}).join('')}</div>`:''}
+        <div class="sec">บันทึกลงใบไหน · แนะนำ: ${esc(sg.why)}</div>
+        <div class="list">${sg.opts.map(o=>`<button class="item pick ${pick===o.sh.id?'sel':''}" data-t="${o.sh.id}"><div><b>ใบที่ ${o.sh.no}${o.sh.done?' · ครบแล้ว':''}</b><small>มีแล้ว ${Object.keys(o.sh.rows).length} แถว · ข้อมูลนี้ตรง ${o.m} · ไม่ตรง ${o.c}</small></div><span class="r">${pick===o.sh.id?'●':'○'}</span></button>`).join('')}
+          <button class="item pick ${pick==='new'?'sel':''}" data-t="new"><div><b>ใบใหม่ (ใบที่ ${S.sheets.reduce((m,x)=>Math.max(m,x.no),0)+1})</b><small>ใบนำส่งอีกใบ ที่ลำดับเริ่มนับใหม่</small></div><span class="r">${pick==='new'?'●':'○'}</span></button></div>
+        ${dup?'<div class="verdict ok" style="margin-top:10px">ใบนี้สแกนครบแล้ว — ไม่ต้องบันทึกซ้ำ</div>':''}
+        <div class="acts"><button class="pri" id="rvSave">${dup?'ปิด (ไม่บันทึกซ้ำ)':'บันทึก'}</button><button id="rvDrop">ทิ้ง ถ่ายใหม่</button></div>`;
+      $('reviewIn').querySelectorAll('.pick').forEach(b=>b.onclick=()=>{ pick=b.dataset.t; render(); });
+      $('rvSave').onclick=()=>{ $('review').hidden=true;
+        if(dup) return done(null);
+        const sh=pick==='new'?newSheet(S):S.sheets.find(x=>x.id===pick); saveTo(sh,cap); done(sh); };
+      $('rvDrop').onclick=()=>{ $('review').hidden=true; toast('ไม่ได้บันทึก'); done(null); };
+    };
+    render(); $('review').hidden=false;
+  });
+}
+async function readCapture(src){
+  // which way up is the page: the orientation that shows the most postcodes
+  let rot=0, f=await readFrame(FILTERS[0],0,src);
+  if(f.pcs<3){ for(const r of [90,270,180]){ const g=await readFrame(FILTERS[0],r,src); if(g.pcs>f.pcs){ f=g; rot=r; } if(f.pcs>=3) break; } }
+  const frames=[f]; for(const flt of FILTERS.slice(1)) frames.push(await readFrame(flt,rot,src));
+  return {frames,cap:consolidate(frames)};
+}
+let lastSkipMsg=0, live=[], liveT=0;
 
 /* ================= Boxes + labels ================= */
 // false when most readings of that row name a different code (the box came from a one-off misread)
@@ -410,6 +492,15 @@ function draw(ts){
   ctx.setTransform(dpr,0,0,dpr,0,0); ctx.clearRect(0,0,W,H);
   const now=performance.now();
   const S=cur();
+  // green check = row already saved, white dashed = not saved yet (tap the shutter to save this page)
+  if(mode==='cam'&&now-liveT<1500) for(const L of live){
+    const r=toScreen(L.b); r.x-=4; r.y-=3; r.w+=8; r.h+=6;
+    ctx.globalAlpha=Math.max(0,1-(now-liveT)/1500);
+    if(L.ok){ ctx.strokeStyle='#4ade80'; ctx.lineWidth=2; ctx.setLineDash([]); rr(r.x,r.y,r.w,r.h,4); ctx.stroke();
+      ctx.fillStyle='rgba(74,222,128,.18)'; ctx.fill(); ctx.fillStyle='#4ade80'; ctx.font='700 13px sans-serif'; ctx.fillText('✓',r.x-14,r.y+r.h-4); }
+    else{ ctx.strokeStyle='rgba(255,255,255,.85)'; ctx.lineWidth=1.5; ctx.setLineDash([4,3]); rr(r.x,r.y,r.w,r.h,4); ctx.stroke(); ctx.setLineDash([]); }
+    ctx.globalAlpha=1;
+  }
   for(const d of dets){
     if(!agrees(d)) continue;
     for(const k of ['x0','y0','x1','y1']) d.b[k]+=(d.target[k]-d.b[k])*.35;
@@ -547,6 +638,7 @@ async function getWorker(){
   if(!worker){ worker=await Tesseract.createWorker('eng',1); await worker.setParameters({tessedit_pageseg_mode:'11'}); }
   return worker;
 }
+let busy=false;   // a capture is being read: the live loop waits
 async function startCam(){
   try{
     const stream=await navigator.mediaDevices.getUserMedia({audio:false,video:{facingMode:{ideal:'environment'},width:{ideal:1920},height:{ideal:1080}}});
@@ -554,6 +646,7 @@ async function startCam(){
     const track=stream.getVideoTracks()[0], caps=track.getCapabilities?.()||{};
     if(caps.torch){ const b=$('torch'); b.hidden=false; let on=false;
       b.onclick=async()=>{ on=!on; b.classList.toggle('on',on); try{ await track.applyConstraints({advanced:[{torch:on}]}); }catch(e){} }; }
+    if(caps.focusMode?.includes('continuous')) track.applyConstraints({advanced:[{focusMode:'continuous'}]}).catch(()=>{});
   }catch(e){
     $('status').textContent='เปิดกล้องไม่ได้';
     $('msg').hidden=false;
@@ -562,18 +655,35 @@ async function startCam(){
   }
   $('status').textContent='กำลังโหลดตัวอ่าน…';
   await getWorker();
-  $('status').textContent='กำลังสแกน…';
+  $('status').textContent='กำลังสแกน…'; $('shoot').hidden=false;
   // if the page is held sideways, try the other orientations until postcodes show up, then stay there
   const ROTS=[0,90,270]; let ri=0, empty=0;
   for(let i=0;mode==='cam';i++){
+    if(busy){ await new Promise(r=>setTimeout(r,200)); continue; }
     try{
       const f=await readFrame(FILTERS[i%FILTERS.length],ROTS[ri]);
       if(!f) continue;
-      applyFrame(f);
+      showBoxes(f);
       if(f.pcs){ empty=0; } else if(++empty>=4){ empty=0; ri=(ri+1)%ROTS.length; }
     }catch(e){ await new Promise(r=>setTimeout(r,300)); }
   }
 }
+// 📸 opens the phone's own camera: a full-resolution photo reads far better than a video frame
+$('shoot').onclick=()=>{ if(!busy) $('snap').click(); };
+$('snap').onchange=async()=>{
+  const f=$('snap').files[0]; $('snap').value=''; if(!f) return;
+  busy=true; $('shoot').classList.add('busy'); $('status').textContent='กำลังอ่านภาพ…';
+  try{
+    const img=new Image(); img.src=URL.createObjectURL(f); await img.decode();
+    const {cap}=await readCapture({el:img,w:img.naturalWidth,h:img.naturalHeight});
+    const bad=checkCapture(cap);
+    if(bad) toast(bad); else await review(cap);
+  }catch(e){ toast('อ่านภาพไม่สำเร็จ ลองใหม่'); }
+  $('shoot').classList.remove('busy'); busy=false; $('status').textContent='กำลังสแกน…';
+  // iOS may stop the live stream while its camera is open: restart it
+  if(mode==='cam'&&(!video.srcObject||video.srcObject.getVideoTracks().every(t=>t.readyState==='ended'))) location.reload();
+  else video.play().catch(()=>{});
+};
 
 /* ================= Several photos ================= */
 // read them one after another, keep each photo's boxes, tap a thumbnail to view it
@@ -598,22 +708,23 @@ $('pick').onclick=()=>$('file').click();
 $('file').onchange=async()=>{
   const files=[...$('file').files]; $('file').value=''; if(!files.length) return;
   mode='img';
-  video.srcObject?.getTracks().forEach(t=>t.stop()); video.hidden=true; $('msg').hidden=true; $('torch').hidden=true;
+  video.srcObject?.getTracks().forEach(t=>t.stop()); video.hidden=true; $('msg').hidden=true; $('torch').hidden=true; $('shoot').hidden=true;
   still.hidden=false; $('strip').hidden=false; $('cam').hidden=false;
   const start=shots.length;
   shots.push(...files.map(f=>({url:URL.createObjectURL(f),dets:null})));
   await getWorker(); refreshUI();
+  const msgs=[];
   for(let i=start;i<shots.length;i++){
     await showShot(i);
     dets=[]; seen=new Set();
-    // find which way up the photo is: the orientation that shows the most postcodes
-    let rot=0, f=await readFrame(FILTERS[0],0);
-    if(f.pcs<3){ for(const r of [90,270,180]){ const g=await readFrame(FILTERS[0],r); if(g.pcs>f.pcs){ f=g; rot=r; } if(f.pcs>=3) break; } }
-    applyFrame(f);
-    for(const flt of FILTERS.slice(1)) applyFrame(await readFrame(flt,rot));
-    dets=dets.filter(agrees); shots[i].dets=dets.map(d=>({...d}));
+    const {frames,cap}=await readCapture(null);
+    for(const f of frames) showBoxes(f,cap.map);
+    const bad=checkCapture(cap);
+    if(bad) msgs.push(`รูป ${i+1}: ${bad}`); else await review(cap);
+    shots[i].dets=dets.map(d=>({...d}));
     renderStrip(); statusLine();
   }
+  if(msgs.length) toast(msgs.at(-1));
   const firstHit=shots.findIndex((p,i)=>i>=start&&p.dets.length);
   if(firstHit>=0) showShot(firstHit);
   $('sessBtn').click();   // show the session result after reading the photos
