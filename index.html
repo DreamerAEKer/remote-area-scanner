@@ -388,7 +388,9 @@ async function readFrame(filter,rot,src){
   const toSrc=drawRotated(el,sw,sh,s,rot,filter);
   const {data}=await worker.recognize(grab);
   const words=(data.words||[]).filter(w=>w.confidence>=35);
-  return {words,toSrc,tr:tableRows(words),pcs:words.filter(w=>asPostcode(w.text)).length};
+  // typical height of the digits read: tells whether the page is too far away to read
+  const dh=median(words.filter(w=>/\d{2}/.test(w.text)).map(w=>(w.bbox.y1-w.bbox.y0)/s));
+  return {rot,words,toSrc,tr:tableRows(words),pcs:words.filter(w=>asPostcode(w.text)).length,digitH:dh,scale:s};
 }
 // Boxes only — the live camera never writes to the session (a blurry or moving frame would spoil the data).
 function showBoxes(f,capRows){
@@ -417,7 +419,9 @@ function showBoxes(f,capRows){
   st.textContent=mode!=='cam'?(n?`พบพื้นที่ห่างไกล ${n} จุด`:'ไม่พบรหัสพื้นที่ห่างไกล')
     :asking?'รอคุณยืนยันใบ ↓'
     :inView?(f.tr.fitOk?`ในภาพ ${inView} แถว · เก็บแล้ว ${saved}${conf?` · กำลังยืนยัน ${conf}`:''}${n?` · ⚑${n}`:''}`:`เห็น ${inView} แถว — ถือนิ่งๆ ให้เห็นเลขลำดับ`)
-    :f.pcs?'เห็นรหัสแต่ยังจับแถวไม่ได้ — ถือให้ตรง':'กำลังหาตาราง…';
+    :f.pcs>=3&&f.digitH*f.scale<14?'ตัวเลขเล็กไป — ขยับเข้าใกล้ ให้เห็นแค่ครึ่งหน้า'
+    :f.pcs?'เห็นรหัสแต่ยังจับแถวไม่ได้ — ถือให้ตรง นิ่งๆ'
+    :`ยังอ่านตัวเลขไม่ได้ — ขยับเข้าใกล้ แสงพอ${f.rot?` (ลองหมุน ${f.rot}°)`:''}`;
   st.className='chip'+(n?' hit':'');
 }
 const okSatang=v=>/\.(00|25|50|75)$/.test(v.toFixed(2));
@@ -730,14 +734,17 @@ async function startCam(){
   await getWorker();
   $('status').textContent='กำลังสแกน… · แตะ = โฟกัส · กดค้าง = ถ่ายเก็บ';
   // if the page is held sideways, try the other orientations until postcodes show up, then stay there
-  const ROTS=[0,90,270]; let ri=0, empty=0;
+  // phone held sideways → the page is sideways in the picture: try those turns first
+  const order=()=>innerWidth>innerHeight?[270,90,0]:[0,90,270];
+  let ROTS=order(), ri=0, empty=0;
+  addEventListener('resize',()=>{ const o=order(); if(o[0]!==ROTS[0]){ ROTS=o; ri=0; empty=0; } });
   for(let i=0;mode==='cam';i++){
     if(busy){ await new Promise(r=>setTimeout(r,200)); continue; }
     try{
       const f=await readFrame(FILTERS[i%FILTERS.length],ROTS[ri]);
       if(!f) continue;
       showBoxes(f); collectLive(f);
-      if(f.pcs){ empty=0; } else if(++empty>=4){ empty=0; ri=(ri+1)%ROTS.length; }
+      if(f.pcs>=2){ empty=0; } else if(++empty>=2){ empty=0; ri=(ri+1)%ROTS.length; }
     }catch(e){ await new Promise(r=>setTimeout(r,300)); }
   }
 }
