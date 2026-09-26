@@ -20,31 +20,11 @@ canvas{position:fixed;inset:0;width:100%;height:100%;pointer-events:none}
 .sp{flex:1}
 button{font:inherit;color:inherit;background:rgba(0,0,0,.55);border:1px solid rgba(255,255,255,.25);border-radius:99px;padding:8px 14px;font-size:14px;cursor:pointer}
 button.on{border-color:var(--amber);color:var(--amber)}
-#still.frozen{object-fit:cover;z-index:1}
 #sessBtn{font-size:13px;padding:6px 12px;font-variant-numeric:tabular-nums}
 #sessBtn.ok{border-color:var(--green);color:var(--green)}
 #sessBtn.bad{border-color:var(--red);color:var(--red)}
 #rotBtn{font-size:13px;padding:6px 12px;font-variant-numeric:tabular-nums}
 #rotBtn.on{border-color:var(--amber);color:var(--amber);background:rgba(255,176,32,.18);font-weight:700}
-#freezeBarBtn{font-size:13px;padding:6px 12px;font-variant-numeric:tabular-nums}
-#freezeBarBtn.on{border-color:#5fe3ff;color:#5fe3ff;background:rgba(95,227,255,.2);font-weight:700}
-#remoteAlert{position:fixed;top:calc(env(safe-area-inset-top,0px) + 54px);left:10px;right:10px;max-width:540px;margin:0 auto;padding:12px 14px;border-radius:16px;background:rgba(20,16,8,0.92);border:2px solid var(--amber);box-shadow:0 8px 32px rgba(255,176,32,0.35),0 0 14px rgba(0,0,0,0.85);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);z-index:6;display:grid;gap:10px;animation:raIn .25s ease-out}
-@keyframes raIn{from{transform:translateY(-10px);opacity:0}to{transform:translateY(0);opacity:1}}
-.ra-hd{display:flex;align-items:center;justify-content:space-between;gap:8px}
-.ra-title{font-size:15px;font-weight:700;color:var(--amber);display:flex;align-items:center;gap:6px}
-.ra-cnt{font-size:12px;font-weight:700;padding:2px 8px;border-radius:99px;background:var(--amber);color:#000}
-.ra-body{display:grid;gap:6px;max-height:160px;overflow-y:auto}
-.ra-item{display:flex;align-items:center;gap:10px;padding:8px 10px;background:rgba(255,255,255,0.06);border-radius:10px;font-size:13px}
-.ra-badge{font-size:15px;font-weight:700;color:#ffe2a8;font-variant-numeric:tabular-nums;background:rgba(255,176,32,0.22);padding:2px 6px;border-radius:6px;border:1px solid rgba(255,176,32,0.5)}
-.ra-desc{flex:1;min-width:0;line-height:1.3}
-.ra-seq{color:var(--green);font-weight:700;margin-right:4px}
-.ra-area{display:block;color:var(--amber);font-size:11px}
-.ra-actions{display:flex;gap:8px;margin-top:2px}
-.ra-act{flex:1;padding:8px 10px;font-size:13px;font-weight:700;border-radius:10px;cursor:pointer}
-.ra-act.freeze{background:rgba(95,227,255,0.2);color:#5fe3ff;border:1px solid #5fe3ff}
-.ra-act.freeze.on{background:#5fe3ff;color:#000}
-.ra-act.snap{background:var(--amber);color:#000;border:1px solid var(--amber)}
-.ra-act.clear{flex:0 0 auto;background:rgba(255,255,255,0.1);color:var(--muted);border:1px solid rgba(255,255,255,0.2)}
 #msg{position:fixed;left:16px;right:16px;top:40%;text-align:center;font-size:15px;line-height:1.6;color:var(--muted)}
 #msg button{margin-top:12px}
 #strip{position:fixed;left:0;right:0;bottom:0;padding:10px 12px calc(env(safe-area-inset-bottom,0px) + 10px);display:flex;gap:8px;overflow-x:auto;background:linear-gradient(#0000,#000c)}
@@ -150,7 +130,6 @@ input{-webkit-user-select:text;user-select:text}
   #cov{left:calc(env(safe-area-inset-left,0px) + 12px);right:auto;bottom:calc(env(safe-area-inset-bottom,0px) + 8px);max-width:320px;font-size:11px;padding:6px 10px}
   #cov .t b{font-size:12px}
   .repair-bar{max-width:480px;left:50%;transform:translateX(-50%)}
-  #remoteAlert{left:calc(env(safe-area-inset-left,0px) + 12px);right:auto;top:calc(env(safe-area-inset-top,0px) + 48px);max-width:360px}
 }
 
 </style>
@@ -162,24 +141,11 @@ input{-webkit-user-select:text;user-select:text}
 <div id="bar">
   <span class="chip" id="status">กำลังเปิดกล้อง…</span>
   <span class="sp"></span>
-  <button id="freezeBarBtn" aria-label="ค้างภาพ">❄️ ค้างภาพ</button>
   <button id="rotBtn" aria-label="หมุนทิศทางเอกสาร">🔄 ออโต้</button>
   <button id="sessBtn" aria-label="ดูชุดที่สแกน">ชุด · 0 แถว</button>
   <button id="torch" hidden aria-label="ไฟฉาย">⚡</button>
   <button id="cam" hidden aria-label="กลับไปใช้กล้อง">📷</button>
   <button id="pick" aria-label="เลือกรูป">🖼</button>
-</div>
-<div id="remoteAlert" hidden>
-  <div class="ra-hd">
-    <span class="ra-title">🚨 ตรวจพบพื้นที่ห่างไกล / เกาะ</span>
-    <span class="ra-cnt" id="raCount">0 จุด</span>
-  </div>
-  <div class="ra-body" id="raList"></div>
-  <div class="ra-actions">
-    <button id="freezeBtn" class="ra-act freeze">❄️ ค้างภาพ</button>
-    <button id="raSnapBtn" class="ra-act snap">📸 สแกนบันทึก</button>
-    <button id="raClearBtn" class="ra-act clear">✕ ล้างจอ</button>
-  </div>
 </div>
 <div id="msg" hidden></div>
 <div id="strip" hidden></div>
@@ -233,7 +199,7 @@ const DATA=[
 ];
 const BY_CODE={};
 for(const [seq,prov,office,code,area] of DATA) (BY_CODE[code] ||= []).push({seq,prov,office,area});
-const APP_VERSION='v16';   // shown in the app; every version is listed at versions.html
+const APP_VERSION='v15';   // shown in the app; every version is listed at versions.html
 const $=id=>document.getElementById(id);
 document.addEventListener('DOMContentLoaded',()=>{ const v=$('ver'); if(v) v.textContent=APP_VERSION; });
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -373,44 +339,18 @@ function checkDone(sh){
 
 /* ================= Reading a frame ================= */
 const FIX={O:'0',o:'0',D:'0',Q:'0',I:'1',l:'1','|':'1',i:'1',S:'5',s:'5',B:'8',Z:'2',z:'2',G:'6'};
-function asMoney(t){ t=String(t??'').replace(/^[^\d]+|[^\d]+$/g,''); return /^\d{1,3}(,\d{3})+\.\d{2}$|^\d{1,6}\.\d{2}$/.test(t)?parseFloat(t.replace(/,/g,'')):null; }
-const asSeq=t=>{ t=String(t??'').replace(/[.)\]]$/,''); return /^\d{1,3}$/.test(t)&&+t>0?+t:null; };
-function asSerial(t){   // 13-character item number, e.g. EQ420949020TH → running serial 42094902
-  t=String(t??'').replace(/[^A-Za-z0-9]/g,'').toUpperCase(); if(t.length!==13) return null;
-  const d=[...t.slice(2,11)].map(c=>FIX[c]??FIX[c.toLowerCase()]??c).join('');
-  return /^[A-Z]{2}$/.test(t.slice(0,2))&&/^\d{9}$/.test(d)?+d.slice(0,8):null;
-}
-
-// Valid 2-digit province prefixes in Thailand (10-96)
-const VALID_PROV_PREFIXES=new Set([
-  10,11,12,13,14,15,16,17,18,19,
-  20,21,22,23,24,25,26,27,
-  30,31,32,33,34,35,36,37,39,
-  40,41,42,43,44,45,46,47,48,49,
-  50,51,52,53,54,55,56,57,58,
-  60,61,62,63,64,65,66,67,
-  70,71,72,73,74,75,76,77,
-  80,81,82,83,84,85,86,
-  90,91,92,93,94,95,96
-]);
-// Known non-existent postcodes that commonly misread from money/totals (e.g. 2,210.00 -> 22100)
-const INVALID_POSTCODES=new Set(['22100','22001','10001','00000','99999','10000']);
-
-function asPostcode(raw){
-  if(!raw) return null;
-  const s=String(raw).trim();
-  // Postcodes NEVER contain commas, decimal points, currency symbols, slashes, or colons
-  if(/[.,฿\/:;]/.test(s)) return null;
-  // If formatted as money, reject immediately
-  if(asMoney(s)!=null) return null;
-  let t=s.replace(/^[^\w|]+|[^\w|]+$/g,'');
+function asPostcode(t){
+  t=t.replace(/^[^\w|]+|[^\w|]+$/g,'');
   if(t.length!==5||(t.match(/\d/g)||[]).length<4) return null;
   t=[...t].map(c=>FIX[c]??c).join('');
-  if(!/^[1-9]\d{4}$/.test(t)) return null;
-  const pref=+t.slice(0,2);
-  if(!VALID_PROV_PREFIXES.has(pref)) return null;
-  if(INVALID_POSTCODES.has(t)) return null;
-  return t;
+  return /^[1-9]\d{4}$/.test(t)?t:null;
+}
+function asMoney(t){ t=t.replace(/^[^\d]+|[^\d]+$/g,''); return /^\d{1,3}(,\d{3})+\.\d{2}$|^\d{1,6}\.\d{2}$/.test(t)?parseFloat(t.replace(/,/g,'')):null; }
+const asSeq=t=>{ t=t.replace(/[.)\]]$/,''); return /^\d{1,3}$/.test(t)&&+t>0?+t:null; };
+function asSerial(t){   // 13-character item number, e.g. EQ420949020TH → running serial 42094902
+  t=t.replace(/[^A-Za-z0-9]/g,'').toUpperCase(); if(t.length!==13) return null;
+  const d=[...t.slice(2,11)].map(c=>FIX[c]??FIX[c.toLowerCase()]??c).join('');
+  return /^[A-Z]{2}$/.test(t.slice(0,2))&&/^\d{9}$/.test(d)?+d.slice(0,8):null;
 }
 
 // Table rows are anchored on the postcode column. The printed ลำดับ is read where possible, then every row's
@@ -473,10 +413,7 @@ function tableRows(words){
   return {rows:good,total:tot?.m??null,lastSeq,fitOk};
 }
 
-function srcSize(){
-  if(isFrozen) return [freezeCanvas.width||video.videoWidth, freezeCanvas.height||video.videoHeight];
-  return mode==='cam'?[video.videoWidth,video.videoHeight]:[still.naturalWidth,still.naturalHeight];
-}
+function srcSize(){ return mode==='cam'?[video.videoWidth,video.videoHeight]:[still.naturalWidth,still.naturalHeight]; }
 function toScreen(b){
   const [sw,sh]=srcSize(), W=ov.clientWidth, H=ov.clientHeight;
   const k=mode==='cam'?Math.max(W/sw,H/sh):Math.min(W/sw,H/sh);
@@ -502,8 +439,8 @@ const FILTERS=['grayscale(1) contrast(1.35)','grayscale(1) contrast(2)','none'];
 const canv=[];
 async function readFrame(filter,rot,src,k=0){
   const el=src?.el??(mode==='cam'?video:still), [sw,sh]=src?[src.w,src.h]:srcSize(); if(!sw) return null;
-  // Google Glass AR Fast-Path: 840px for live camera (ultra-fast ~350ms), 1280px for still capture (super sharp)
-  const maxDim = (mode==='cam'&&!src) ? 840 : 1280;
+  // Google Glass AR Fast-Path: 960px for live camera, 1280px for still capture (super fast & sharp)
+  const maxDim = (mode==='cam'&&!src) ? 960 : 1280;
   const s=Math.min(1,maxDim/Math.max(sw,sh));
   const cv=k?(canv[k] ||= document.createElement('canvas')):grab;
   const toSrc=drawRotated(el,sw,sh,s,rot,filter,cv);
@@ -515,85 +452,6 @@ async function readFrame(filter,rot,src,k=0){
   const dh=median(words.filter(w=>/\d{2}/.test(w.text)).map(w=>(w.bbox.y1-w.bbox.y0)/s));
   return {rot,words,toSrc,tr:tableRows(words),pcs:words.filter(w=>asPostcode(w.text)).length,digitH:dh,scale:s};
 }
-
-/* ================= Freeze Frame & Sticky Lock-On Management ================= */
-let isFrozen=false;
-const freezeCanvas=document.createElement('canvas');
-
-function freezeFrame(){
-  if(isFrozen || mode!=='cam') return;
-  isFrozen=true;
-  freezeCanvas.width=video.videoWidth||innerWidth;
-  freezeCanvas.height=video.videoHeight||innerHeight;
-  const fctx=freezeCanvas.getContext('2d');
-  fctx.drawImage(video,0,0,freezeCanvas.width,freezeCanvas.height);
-  still.src=freezeCanvas.toDataURL('image/jpeg',0.92);
-  still.className='frozen';
-  still.hidden=false;
-  try{ video.pause(); }catch(e){}
-  const b1=$('freezeBarBtn'), b2=$('freezeBtn');
-  if(b1){ b1.textContent='▶ สแกนต่อ'; b1.classList.add('on'); }
-  if(b2){ b2.textContent='▶ สแกนต่อ'; b2.classList.add('on'); }
-  $('status').textContent='❄️ ค้างภาพไว้แล้ว · ตรวจสอบข้อมูลได้สบายตา';
-  $('status').className='chip on';
-  toast('❄️ ค้างภาพไว้แล้ว — แตะปุ่มเดิมเพื่อสแกนต่อ');
-}
-
-function unfreezeFrame(){
-  if(!isFrozen) return;
-  isFrozen=false;
-  still.hidden=true;
-  still.className='';
-  try{ video.play(); }catch(e){}
-  const b1=$('freezeBarBtn'), b2=$('freezeBtn');
-  if(b1){ b1.textContent='❄️ ค้างภาพ'; b1.classList.remove('on'); }
-  if(b2){ b2.textContent='❄️ ค้างภาพ'; b2.classList.remove('on'); }
-  $('status').textContent='👓 AR Glass พร้อมสแกน';
-  $('status').className='chip';
-  toast('▶ กลับมาสแกนกล้องสด');
-}
-
-function toggleFreeze(){
-  if(isFrozen) unfreezeFrame(); else freezeFrame();
-}
-
-function clearDetections(){
-  dets=[];
-  seen.clear();
-  live=[];
-  if($('remoteAlert')) $('remoteAlert').hidden=true;
-  if(isFrozen) unfreezeFrame();
-  toast('ล้างจอแล้ว พร้อมสแกนใหม่');
-}
-
-function updateRemoteAlert(){
-  const ra=$('remoteAlert');
-  if(!ra) return;
-  const remoteDets=dets.filter(d=>d.isRemote);
-  if(!remoteDets.length){
-    ra.hidden=true;
-    return;
-  }
-  ra.hidden=false;
-  const cntEl=$('raCount');
-  if(cntEl) cntEl.textContent=`${remoteDets.length} จุด`;
-  const listEl=$('raList');
-  if(listEl){
-    listEl.innerHTML=remoteDets.map(d=>{
-      const list=BY_CODE[d.code]||[], e=list[0]||{};
-      const seqStr=d.row!=null?`<span class="ra-seq">ลำดับ <b>${d.row}</b></span>`:'';
-      const areaNote=list.some(x=>x.area)?`<small class="ra-area">⚠ ${list.map(x=>x.area).join(', ')}</small>`:'';
-      return `<div class="ra-item">
-        <span class="ra-badge">${d.code}</span>
-        <div class="ra-desc">
-          <div>${seqStr} <b>${esc(e.office||'')}</b> (${esc(e.prov||'')})</div>
-          ${areaNote}
-        </div>
-      </div>`;
-    }).join('');
-  }
-}
-
 // Boxes & Holograms — Google Glass AR detects all postcodes, highlights remote areas in gold
 function showBoxes(f,capRows){
   const now=performance.now(); let freshRemote=false, freshNormal=false;
@@ -604,36 +462,20 @@ function showBoxes(f,capRows){
     const b=f.toSrc(w.bbox), r=rowOf.get(w), row=r?.seq??null;
     if(capRows&&row!=null&&capRows.get(row)?.code&&capRows.get(row).code!==code) continue;
     const prev=dets.find(d=>d.code===code&&Math.hypot((d.b.x0+d.b.x1)/2-(b.x0+b.x1)/2, (d.b.y0+d.b.y1)/2-(b.y0+b.y1)/2)<180);
-    if(prev){
-      prev.target=b; prev.t=now;
-      if(row!=null) prev.row=row;
-      prev.seenCount=(prev.seenCount||1)+1;
-      if(isRemote) prev.isRemote=true;
-    }
-    else {
-      dets.push({code,isRemote,b:{...b},target:b,t:now,row,firstSeen:now,seenCount:1,locked:isRemote});
-      if(isRemote){
-        if(!seen.has(code)){ seen.add(code); freshRemote=true; }
-      }
-      else freshNormal=true;
-    }
+    if(prev){ prev.target=b; prev.t=now; if(row!=null) prev.row=row; prev.seenCount=(prev.seenCount||1)+1; }
+    else { dets.push({code,isRemote,b:{...b},target:b,t:now,row,firstSeen:now,seenCount:1});
+      if(isRemote){ if(!seen.has(code)){ seen.add(code); freshRemote=true; } }
+      else freshNormal=true; }
   }
   camFrame++; for(const d of dets) if(d.t===now) d.f=camFrame;
-
-  // Sticky / Persistent Lock-on:
-  // Remote Area postcodes: NEVER drop (locked = true) until user clears!
-  // Normal postcodes: Keep for 15 seconds so they never blink or flicker
-  dets=dets.filter(d=>mode!=='cam' || d.isRemote || d.locked || (now-d.t<15000));
+  // Keep holograms persistent for 1.6s so AR doesn't flicker
+  dets=dets.filter(d=>mode!=='cam'||(now-d.t<1600));
   const remoteDets=dets.filter(d=>d.isRemote);
   if(freshRemote||(remoteDets.length&&now-lastBeep>3500)){
     if(remoteDets.length){ glassChime('remote'); lastBeep=now; }
   } else if(freshNormal&&now-lastBeep>1200){
     glassChime('normal');
   }
-
-  // Update persistent Remote Area HUD alert
-  updateRemoteAlert();
-
   // which rows in view are already saved in the manifest being scanned
   let saved=0, inView=0, conf=0;
   if(mode==='cam'&&!capRows){
@@ -646,13 +488,12 @@ function showBoxes(f,capRows){
   }
   const n=remoteDets.length, st=$('status');
   st.textContent=mode!=='cam'?(n?`👓 AR: พบพื้นที่ห่างไกล ${n} จุด`:'👓 AR: ไม่พบรหัสพื้นที่ห่างไกล')
-    :isFrozen?`❄️ ค้างภาพอยู่ · ${n?`พบพื้นที่ห่างไกล ${n} จุด`:inView?`ล็อกไว้ ${inView} แถว`:'กด ▶ สแกนต่อ'}`
     :asking?'รอคุณยืนยันใบ ↓'
-    :n?`⚑ ตรวจพบพื้นที่ห่างไกล ${n} จุด! (กด ❄️ ค้างภาพ หรือ 📸 บันทึก)`
+    :n?`⚑ ตรวจพบพื้นที่ห่างไกล ${n} จุด! (กด 📸 ตรวจทั้งใบ)`
     :inView?(f.tr.fitOk?`👓 AR ล็อก ${inView} แถว (กด 📸 สแกนใบ)`:`👓 AR ส่องรหัส ปณ. / เลขสิ่งของ`)
     :f.pcs?`👓 AR ล็อกรหัสได้ ${f.pcs} จุด`
     :`👓 AR Glass พร้อมสแกน · เล็งไปที่รหัส ปณ.`;
-  st.className='chip'+(n?' hit':isFrozen?' on':'');
+  st.className='chip'+(n?' hit':'');
 }
 const okSatang=v=>/\.(00|25|50|75)$/.test(v.toFixed(2));
 // One deliberate capture = 3 readings of the same sharp image, merged before anything is saved.
@@ -978,7 +819,7 @@ function draw(ts){
     for(const k of ['x0','y0','x1','y1']) d.b[k]+=(d.target[k]-d.b[k])*.4;
     const r=toScreen(d.b), p=6; r.x-=p; r.y-=p; r.w+=p*2; r.h+=p*2;
     const age=now-d.t;
-    const alpha=d.isRemote ? 1.0 : Math.min(1, Math.max(0.35, age<8000 ? 1 : 1-(age-8000)/7000));
+    const alpha=Math.min(1, Math.max(0, age<900?1:1-(age-900)/700));
     ctx.globalAlpha=alpha;
 
     if(d.isRemote){
@@ -1212,7 +1053,7 @@ async function startCam(){
 }
 async function liveLoop(k=0){
   for(let i=0;mode==='cam';i++){
-    if(busy || isFrozen){ await new Promise(r=>setTimeout(r,150)); continue; }
+    if(busy){ await new Promise(r=>setTimeout(r,150)); continue; }
     try{
       const f=await readFrame(FILTERS[(i*2)%FILTERS.length],currentRot(),null,0);
       if(!f) continue;
@@ -1311,10 +1152,6 @@ $('file').onchange=async()=>{
   $('sessBtn').click();   // show the session result after reading the photos
 };
 $('cam').onclick=()=>location.reload();
-const fbBtn=$('freezeBarBtn'); if(fbBtn) fbBtn.onclick=toggleFreeze;
-const fBtn=$('freezeBtn'); if(fBtn) fBtn.onclick=toggleFreeze;
-const raSnap=$('raSnapBtn'); if(raSnap) raSnap.onclick=()=>doCaptureStill();
-const raClr=$('raClearBtn'); if(raClr) raClr.onclick=clearDetections;
 
 refreshUI();
 requestAnimationFrame(draw);
