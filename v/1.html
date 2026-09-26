@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#000000">
+<title>สแกนพื้นที่ห่างไกล</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@500;700&display=swap" rel="stylesheet">
+<style>
+:root{--amber:#ffb020;--text:#fff;--muted:#b9c6cf;--font:'IBM Plex Sans Thai',system-ui,sans-serif}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;background:#000;color:var(--text);font-family:var(--font);overflow:hidden}
+[hidden]{display:none!important}
+video,#still{position:fixed;inset:0;width:100%;height:100%;object-fit:cover}
+#still{object-fit:contain}
+canvas{position:fixed;inset:0;width:100%;height:100%;pointer-events:none}
+#bar{position:fixed;left:0;right:0;top:0;padding:calc(env(safe-area-inset-top,0px) + 12px) 12px 12px;display:flex;gap:8px;align-items:center;background:linear-gradient(#000a,#0000)}
+.chip{font-size:13px;padding:6px 12px;border-radius:99px;background:rgba(0,0,0,.55);border:1px solid rgba(255,255,255,.25)}
+.chip.hit{border-color:var(--amber);color:var(--amber);font-weight:700}
+.sp{flex:1}
+button{font:inherit;color:inherit;background:rgba(0,0,0,.55);border:1px solid rgba(255,255,255,.25);border-radius:99px;padding:8px 14px;font-size:14px;cursor:pointer}
+button.on{border-color:var(--amber);color:var(--amber)}
+#msg{position:fixed;left:16px;right:16px;top:40%;text-align:center;font-size:15px;line-height:1.6;color:var(--muted)}
+#msg button{margin-top:12px}
+</style>
+</head>
+<body>
+<video id="video" playsinline muted autoplay></video>
+<img id="still" alt="" hidden>
+<canvas id="ov"></canvas>
+<div id="bar">
+  <span class="chip" id="status">กำลังเปิดกล้อง…</span>
+  <span class="sp"></span>
+  <button id="torch" hidden aria-label="ไฟฉาย">⚡</button>
+  <button id="pick" aria-label="เลือกรูป">🖼</button>
+</div>
+<div id="msg" hidden></div>
+<input type="file" id="file" accept="image/*" hidden>
+
+<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js"></script>
+<script>
+// รหัสไปรษณีย์ 85 พื้นที่ห่างไกล/เกาะ (ประกาศไปรษณีย์ไทย มีผล 1 ม.ค. 2569)
+// [ลำดับ, จังหวัด, ที่ทำการ, รหัส, พื้นที่ ('' = ทุกพื้นที่ของรหัส)]
+const DATA=[
+[1,'ชลบุรี','เกาะสีชัง','20120',''],[2,'ชลบุรี','บางละมุง','20150','เฉพาะเกาะล้าน'],
+[3,'ระยอง','เพ','21160','เฉพาะเกาะเสม็ด'],[4,'ตราด','ตราด','23000','เฉพาะเกาะกูด'],
+[5,'ตราด','แหลมงอบ','23120','เฉพาะเกาะหมาก'],[6,'ตราด','เกาะช้าง','23170',''],
+[7,'เชียงใหม่','สะเมิง','50250',''],[8,'เชียงใหม่','อมก๋อย','50310',''],[9,'เชียงใหม่','เวียงแหง','50350',''],
+[10,'น่าน','ทุ่งช้าง','55130',''],[11,'น่าน','บ่อเกลือ','55220',''],
+[12,'เชียงราย','เวียงป่าเป้า','57170',''],[13,'เชียงราย','แม่สรวย','57180',''],[14,'เชียงราย','แม่เจดีย์','57260',''],
+[15,'เชียงราย','เวียงแก่น','57310',''],[16,'เชียงราย','ขุนตาล','57340',''],
+[17,'แม่ฮ่องสอน','แม่ฮ่องสอน','58000',''],[18,'แม่ฮ่องสอน','แม่สะเรียง','58110',''],[19,'แม่ฮ่องสอน','แม่ลาน้อย','58120',''],
+[20,'แม่ฮ่องสอน','ปาย','58130',''],[21,'แม่ฮ่องสอน','ขุนยวม','58140',''],[22,'แม่ฮ่องสอน','ปางมะผ้า','58150',''],
+[23,'ตาก','ท่าสองยาง','63150',''],[24,'ตาก','อุ้มผาง','63170',''],
+[25,'กาญจนบุรี','ทองผาภูมิ','71180',''],[26,'กาญจนบุรี','สังขละบุรี','71240',''],
+[27,'กระบี่','เหนือคลอง','81130','เฉพาะเกาะศรีบอยา'],[28,'กระบี่','เกาะลันตา','81150',''],[29,'กระบี่','เกาะพีพี','81210',''],
+[30,'พังงา','พังงา','82000','เฉพาะเกาะปันหยี'],[31,'พังงา','เกาะยาว','82160',''],
+[32,'ภูเก็ต','ภูเก็ต','83000',''],[33,'ภูเก็ต','กะรน','83100',''],[34,'ภูเก็ต','ถลาง','83110',''],
+[35,'ภูเก็ต','กะทู้','83120',''],[36,'ภูเก็ต','ราไวย์','83130',''],[37,'ภูเก็ต','ป่าตอง','83150',''],
+[38,'สุราษฎร์ธานี','เกาะสมุย','84140',''],[39,'สุราษฎร์ธานี','ละไม','84310',''],[40,'สุราษฎร์ธานี','เฉวง','84320',''],
+[41,'สุราษฎร์ธานี','แม่น้ำ','84330',''],[42,'สุราษฎร์ธานี','ดอนสัก','84220','เฉพาะเกาะพลวย'],[43,'สุราษฎร์ธานี','ดอนสัก','84220','เฉพาะเกาะนกเภา'],
+[44,'สุราษฎร์ธานี','เกาะพะงัน','84280',''],[45,'สุราษฎร์ธานี','เกาะเต่า','84360',''],
+[46,'ระนอง','ระนอง','85000','เฉพาะเกาะพยาม'],
+[47,'สตูล','สตูล','91000','เฉพาะเกาะสาหร่าย'],[48,'สตูล','สตูล','91000','เฉพาะปูยู'],
+[49,'สตูล','ละงู','91110','เฉพาะเกาะหลีเป๊ะ'],[50,'สตูล','ละงู','91110','เฉพาะเกาะบุโหลน'],
+[51,'ตรัง','กันตัง','92110','เฉพาะเกาะลิบง'],[52,'ตรัง','กันตัง','92110','เฉพาะเกาะมุก'],[53,'ตรัง','ปะเหลียน','92120','เฉพาะเกาะสุกร'],
+[54,'ปัตตานี','ปัตตานี','94000',''],[55,'ปัตตานี','สายบุรี','94110',''],[56,'ปัตตานี','โคกโพธิ์','94120',''],
+[57,'ปัตตานี','ปะนาเระ','94130',''],[58,'ปัตตานี','มายอ','94140',''],[59,'ปัตตานี','ยะหริ่ง','94150',''],
+[60,'ปัตตานี','ยะรัง','94160',''],[61,'ปัตตานี','หนองจิก','94170',''],[62,'ปัตตานี','นาประดู่','94180',''],
+[63,'ปัตตานี','ปาลัส','94190',''],[64,'ปัตตานี','ไม้แก่น','94220',''],[65,'ปัตตานี','กะพ้อ','94230',''],
+[66,'ยะลา','ยะลา','95000',''],[67,'ยะลา','เบตง','95110',''],[68,'ยะลา','ยะหา','95120',''],[69,'ยะลา','บันนังสตา','95130',''],
+[70,'ยะลา','รามัน','95140',''],[71,'ยะลา','ธารโต','95150',''],[72,'ยะลา','ลำใหม่','95160',''],[73,'ยะลา','แม่หวาด','95170',''],
+[74,'นราธิวาส','นราธิวาส','96000',''],[75,'นราธิวาส','ตากใบ','96110',''],[76,'นราธิวาส','สุไหงโก-ลก','96120',''],
+[77,'นราธิวาส','ตันหยงมัส','96130',''],[78,'นราธิวาส','สุไหงปาดี','96140',''],[79,'นราธิวาส','รือเสาะ','96150',''],
+[80,'นราธิวาส','แว้ง','96160',''],[81,'นราธิวาส','บาเจาะ','96170',''],[82,'นราธิวาส','ยี่งอ','96180',''],
+[83,'นราธิวาส','สุคิริน','96190',''],[84,'นราธิวาส','ศรีสาคร','96210',''],[85,'นราธิวาส','ดุซงญอ','96220',''],
+];
+const BY_CODE={};
+for(const [seq,prov,office,code,area] of DATA) (BY_CODE[code] ||= []).push({seq,prov,office,area});
+const $=id=>document.getElementById(id);
+const video=$('video'), still=$('still'), ov=$('ov'), ctx=ov.getContext('2d');
+const grab=document.createElement('canvas'), gctx=grab.getContext('2d',{willReadFrequently:true});
+let mode='cam', worker=null, dets=[], seen=new Set(), lastBeep=0;
+
+/* ---- read 5-digit postcodes (tolerates one misread character like O/0, l/1) ---- */
+const FIX={O:'0',o:'0',D:'0',Q:'0',I:'1',l:'1','|':'1',i:'1',S:'5',s:'5',B:'8',Z:'2',z:'2',G:'6'};
+function asPostcode(t){
+  t=t.replace(/^[^\w|]+|[^\w|]+$/g,'');
+  if(t.length!==5||(t.match(/\d/g)||[]).length<4) return null;
+  t=[...t].map(c=>FIX[c]??c).join('');
+  return /^[1-9]\d{4}$/.test(t)?t:null;
+}
+function srcSize(){ return mode==='cam'?[video.videoWidth,video.videoHeight]:[still.naturalWidth,still.naturalHeight]; }
+function toScreen(b){
+  const [sw,sh]=srcSize(), W=ov.clientWidth, H=ov.clientHeight;
+  const k=mode==='cam'?Math.max(W/sw,H/sh):Math.min(W/sw,H/sh);
+  return {x:(W-sw*k)/2+b.x0*k, y:(H-sh*k)/2+b.y0*k, w:(b.x1-b.x0)*k, h:(b.y1-b.y0)*k};
+}
+
+// each preprocessing catches different digits, so passes rotate through them
+const FILTERS=['grayscale(1) contrast(1.35)','grayscale(1) contrast(2)','none'];
+async function scanOnce(filter=FILTERS[0]){
+  const [sw,sh]=srcSize(); if(!sw) return;
+  const s=Math.min(1,(mode==='cam'?1600:2400)/Math.max(sw,sh));
+  grab.width=Math.round(sw*s); grab.height=Math.round(sh*s);
+  gctx.filter=filter;
+  gctx.drawImage(mode==='cam'?video:still,0,0,grab.width,grab.height);
+  const {data}=await worker.recognize(grab);
+  const now=performance.now(); let fresh=false;
+  for(const w of data.words||[]){
+    if(w.confidence<35) continue;
+    const code=asPostcode(w.text); if(!code||!BY_CODE[code]) continue;   // only remote-area codes get a box
+    const b={x0:w.bbox.x0/s,y0:w.bbox.y0/s,x1:w.bbox.x1/s,y1:w.bbox.y1/s};
+    const prev=dets.find(d=>d.code===code&&Math.abs(d.b.x0-b.x0)<200&&Math.abs(d.b.y0-b.y0)<200);
+    if(prev){ prev.target=b; prev.t=now; } else { dets.push({code,b:{...b},target:b,t:now}); }
+    if(!seen.has(code)){ seen.add(code); fresh=true; }
+  }
+  dets=dets.filter(d=>mode!=='cam'||now-d.t<1500);
+  if(fresh||(dets.length&&now-lastBeep>4000)){ if(dets.length){ beep(); lastBeep=now; } }
+  const n=dets.length, st=$('status');
+  st.textContent=n?`พบพื้นที่ห่างไกล ${n} จุด`:(mode==='cam'?'กำลังสแกน…':'ไม่พบรหัสพื้นที่ห่างไกล');
+  st.className='chip'+(n?' hit':'');
+}
+
+/* ---- draw boxes + labels ---- */
+function rr(x,y,w,h,r){ctx.beginPath();ctx.roundRect?ctx.roundRect(x,y,w,h,r):ctx.rect(x,y,w,h);}
+function draw(ts){
+  const dpr=devicePixelRatio||1, W=ov.clientWidth, H=ov.clientHeight;
+  if(ov.width!==W*dpr||ov.height!==H*dpr){ov.width=W*dpr;ov.height=H*dpr;}
+  ctx.setTransform(dpr,0,0,dpr,0,0); ctx.clearRect(0,0,W,H);
+  const now=performance.now();
+  for(const d of dets){
+    for(const k of ['x0','y0','x1','y1']) d.b[k]+=(d.target[k]-d.b[k])*.35;
+    const r=toScreen(d.b), p=6; r.x-=p; r.y-=p; r.w+=p*2; r.h+=p*2;
+    ctx.globalAlpha=mode==='cam'?Math.max(0,1-(now-d.t)/1500):1;
+    ctx.shadowColor='#ffb020'; ctx.shadowBlur=12+8*Math.sin(ts/180);
+    ctx.strokeStyle='#ffb020'; ctx.lineWidth=3; rr(r.x,r.y,r.w,r.h,6); ctx.stroke();
+    ctx.fillStyle='rgba(255,176,32,.15)'; ctx.fill(); ctx.shadowBlur=0;
+    const list=BY_CODE[d.code], e=list[0];
+    const t1=`#${list.map(x=>x.seq).join('/')} ${e.office} · ${e.prov}`;
+    const t2=list.some(x=>x.area)?'⚠ '+list.map(x=>x.area.replace('เฉพาะ','')).join(' / '):'';
+    ctx.font='700 14px "IBM Plex Sans Thai",sans-serif';
+    let lw=ctx.measureText(t1).width;
+    if(t2){ ctx.font='500 12px "IBM Plex Sans Thai",sans-serif'; lw=Math.max(lw,ctx.measureText(t2).width); }
+    lw+=16; const lh=t2?42:26;
+    const lx=Math.min(Math.max(4,r.x),W-lw-4); let ly=r.y-lh-4; if(ly<60) ly=r.y+r.h+4;
+    ctx.fillStyle='rgba(0,0,0,.8)'; rr(lx,ly,lw,lh,6); ctx.fill();
+    ctx.fillStyle='#ffb020'; ctx.font='700 14px "IBM Plex Sans Thai",sans-serif'; ctx.fillText(t1,lx+8,ly+18);
+    if(t2){ ctx.fillStyle='#ffe2a8'; ctx.font='500 12px "IBM Plex Sans Thai",sans-serif'; ctx.fillText(t2,lx+8,ly+35); }
+    ctx.globalAlpha=1;
+  }
+  requestAnimationFrame(draw);
+}
+
+/* ---- beep + vibrate on a find ---- */
+let actx=null;
+addEventListener('pointerdown',()=>{ try{ actx ||= new AudioContext(); actx.resume(); }catch(e){} },{once:true});
+function beep(){
+  try{ actx ||= new AudioContext(); const o=actx.createOscillator(), g=actx.createGain(); o.connect(g); g.connect(actx.destination);
+    o.frequency.value=1100; g.gain.setValueAtTime(.12,actx.currentTime); g.gain.exponentialRampToValueAtTime(.001,actx.currentTime+.2);
+    o.start(); o.stop(actx.currentTime+.21); }catch(e){}
+  try{ navigator.vibrate?.(80); }catch(e){}
+}
+
+/* ---- start ---- */
+async function getWorker(){
+  if(!worker){ worker=await Tesseract.createWorker('eng',1); await worker.setParameters({tessedit_pageseg_mode:'11'}); }
+  return worker;
+}
+async function startCam(){
+  try{
+    const stream=await navigator.mediaDevices.getUserMedia({audio:false,video:{facingMode:{ideal:'environment'},width:{ideal:1920},height:{ideal:1080}}});
+    video.srcObject=stream; await video.play();
+    const track=stream.getVideoTracks()[0], caps=track.getCapabilities?.()||{};
+    if(caps.torch){ const b=$('torch'); b.hidden=false; let on=false;
+      b.onclick=async()=>{ on=!on; b.classList.toggle('on',on); try{ await track.applyConstraints({advanced:[{torch:on}]}); }catch(e){} }; }
+  }catch(e){
+    $('status').textContent='เปิดกล้องไม่ได้';
+    $('msg').hidden=false;
+    $('msg').innerHTML='เปิดกล้องไม่ได้<br>ต้องเปิดผ่าน https และกดอนุญาตให้ใช้กล้อง<br><button onclick="document.getElementById(\'file\').click()">เลือกรูปแทน</button>';
+    return;
+  }
+  $('status').textContent='กำลังโหลดตัวอ่าน…';
+  await getWorker();
+  $('status').textContent='กำลังสแกน…';
+  for(let i=0;mode==='cam';i++){ try{ await scanOnce(FILTERS[i%FILTERS.length]); }catch(e){ await new Promise(r=>setTimeout(r,300)); } }
+}
+$('pick').onclick=()=>$('file').click();
+$('file').onchange=async()=>{
+  const f=$('file').files[0]; $('file').value=''; if(!f) return;
+  mode='img'; dets=[]; seen=new Set();
+  video.srcObject?.getTracks().forEach(t=>t.stop()); video.hidden=true; $('msg').hidden=true; $('torch').hidden=true;
+  still.src=URL.createObjectURL(f); still.hidden=false; await still.decode();
+  $('status').textContent='กำลังอ่านรูป…';
+  await getWorker(); for(const f of FILTERS) await scanOnce(f);
+};
+requestAnimationFrame(draw);
+startCam();
+</script>
+</body>
+</html>

@@ -96,7 +96,6 @@ video{-webkit-touch-callout:none;-webkit-user-select:none;user-select:none;touch
 #ask b{font-size:16px;color:var(--amber)} #ask small{display:block;color:var(--muted);font-size:13px;margin-top:2px}
 #ask .ab{display:flex;gap:8px} #ask .ab button{flex:1;border-radius:10px}
 #ask .pri{background:var(--amber);color:#000;border-color:var(--amber);font-weight:700}
-#ver{position:fixed;right:10px;top:calc(env(safe-area-inset-top,0px) + 64px);font-size:11px;color:rgba(255,255,255,.55);text-decoration:none;z-index:3}
 #toast{position:fixed;left:50%;top:calc(env(safe-area-inset-top,0px) + 70px);transform:translateX(-50%);max-width:92%;padding:10px 16px;border-radius:12px;background:#fff;color:#000;font-weight:700;font-size:15px;z-index:6;text-align:center;box-shadow:0 6px 30px rgba(0,0,0,.5)}
 #toast.ok{background:var(--green)}
 .sheetrow .cells{margin-top:6px}
@@ -120,7 +119,6 @@ video{-webkit-touch-callout:none;-webkit-user-select:none;user-select:none;touch
 <div id="strip" hidden></div>
 <div id="ring" hidden></div>
 <button id="cov" hidden aria-label="ดูความคืบหน้าของใบนำส่ง"></button>
-<a id="ver" href="versions.html"></a>
 <div id="toast" hidden></div>
 <div id="ask" hidden></div>
 <div id="review" hidden><div class="in" id="reviewIn"></div></div>
@@ -167,9 +165,7 @@ const DATA=[
 ];
 const BY_CODE={};
 for(const [seq,prov,office,code,area] of DATA) (BY_CODE[code] ||= []).push({seq,prov,office,area});
-const APP_VERSION='v10';   // shown in the app; every version is listed at versions.html
 const $=id=>document.getElementById(id);
-document.addEventListener('DOMContentLoaded',()=>{ const v=$('ver'); if(v) v.textContent=APP_VERSION; });
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const baht=n=>n==null||isNaN(n)?'—':Number(n).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
 const video=$('video'), still=$('still'), ov=$('ov'), ctx=ov.getContext('2d');
@@ -629,8 +625,7 @@ function sessionHTML(S,isCur){
     <div class="list">${sheets}</div>
     <div class="acts">${isCur
       ?`<button id="sAdd">+ ใบใหม่</button><button class="pri" id="sNew">จบชุดนี้ เริ่มชุดใหม่</button><button id="sHist">ประวัติ (${sessions.filter(x=>!isEmpty(x)).length})</button><button class="danger" id="sDel">ล้างชุดนี้</button>`
-      :`<button class="pri" id="sResume">สแกนต่อในชุดนี้</button><button id="sHist">กลับไปประวัติ</button><button class="danger" id="sDel">ลบชุดนี้</button>`}</div>
-    <p style="margin-top:16px;font-size:12px;color:var(--muted)">เวอร์ชัน ${APP_VERSION} · <a href="versions.html" style="color:var(--muted)">ดูทุกเวอร์ชัน</a></p>`;
+      :`<button class="pri" id="sResume">สแกนต่อในชุดนี้</button><button id="sHist">กลับไปประวัติ</button><button class="danger" id="sDel">ลบชุดนี้</button>`}</div>`;
 }
 function sheetHTML(S,sh){
   const a=sheetSummary(sh);
@@ -735,7 +730,7 @@ async function startCam(){
     $('msg').innerHTML='เปิดกล้องไม่ได้<br>ต้องเปิดผ่าน https และกดอนุญาตให้ใช้กล้อง<br><button onclick="document.getElementById(\'file\').click()">เลือกรูปแทน</button>';
     return;
   }
-  $('status').textContent=`กำลังโหลดตัวอ่าน… (${APP_VERSION})`;
+  $('status').textContent='กำลังโหลดตัวอ่าน…';
   await getWorker();
   $('status').textContent='กำลังสแกน… · แตะ = โฟกัส · กดค้าง = ถ่ายเก็บ';
   // if the page is held sideways, try the other orientations until postcodes show up, then stay there
@@ -749,8 +744,7 @@ async function startCam(){
       const f=await readFrame(FILTERS[i%FILTERS.length],ROTS[ri]);
       if(!f) continue;
       showBoxes(f); collectLive(f);
-      // stay in this orientation while any postcode is read; turn only after 3 readings with nothing
-      if(f.pcs>=1){ empty=0; } else if(++empty>=3){ empty=0; ri=(ri+1)%ROTS.length; }
+      if(f.pcs>=2){ empty=0; } else if(++empty>=2){ empty=0; ri=(ri+1)%ROTS.length; }
     }catch(e){ await new Promise(r=>setTimeout(r,300)); }
   }
 }

@@ -1,0 +1,464 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#000000">
+<title>สแกนพื้นที่ห่างไกล</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+:root{--amber:#ffb020;--green:#4ade80;--red:#ff6b6b;--text:#fff;--muted:#b9c6cf;--sheet:#11161b;--row:#1a2128;--line:rgba(255,255,255,.14);--font:'IBM Plex Sans Thai',system-ui,sans-serif}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;background:#000;color:var(--text);font-family:var(--font);overflow:hidden}
+[hidden]{display:none!important}
+video,#still{position:fixed;inset:0;width:100%;height:100%;object-fit:cover}
+#still{object-fit:contain}
+canvas{position:fixed;inset:0;width:100%;height:100%;pointer-events:none}
+#bar{position:fixed;left:0;right:0;top:0;padding:calc(env(safe-area-inset-top,0px) + 12px) 12px 12px;display:flex;gap:8px;align-items:center;flex-wrap:wrap;background:linear-gradient(#000a,#0000)}
+.chip{font-size:13px;padding:6px 12px;border-radius:99px;background:rgba(0,0,0,.55);border:1px solid rgba(255,255,255,.25)}
+.chip.hit{border-color:var(--amber);color:var(--amber);font-weight:700}
+.sp{flex:1}
+button{font:inherit;color:inherit;background:rgba(0,0,0,.55);border:1px solid rgba(255,255,255,.25);border-radius:99px;padding:8px 14px;font-size:14px;cursor:pointer}
+button.on{border-color:var(--amber);color:var(--amber)}
+#sessBtn{font-size:13px;padding:6px 12px;font-variant-numeric:tabular-nums}
+#sessBtn.ok{border-color:var(--green);color:var(--green)}
+#sessBtn.bad{border-color:var(--red);color:var(--red)}
+#msg{position:fixed;left:16px;right:16px;top:40%;text-align:center;font-size:15px;line-height:1.6;color:var(--muted)}
+#msg button{margin-top:12px}
+#strip{position:fixed;left:0;right:0;bottom:0;padding:10px 12px calc(env(safe-area-inset-bottom,0px) + 10px);display:flex;gap:8px;overflow-x:auto;background:linear-gradient(#0000,#000c)}
+#strip button{position:relative;flex:none;width:64px;height:84px;padding:0;border-radius:10px;overflow:hidden;border:2px solid rgba(255,255,255,.25)}
+#strip button.sel{border-color:#fff}
+#strip button.has{border-color:var(--amber)}
+#strip button.has.sel{box-shadow:0 0 0 2px #fff}
+#strip img{width:100%;height:100%;object-fit:cover}
+#strip span{position:absolute;right:3px;top:3px;min-width:20px;padding:0 5px;border-radius:99px;background:var(--amber);color:#000;font-size:12px;font-weight:700;line-height:20px}
+#strip span.wait{background:rgba(0,0,0,.7);color:#fff}
+
+/* session sheet */
+#sheet{position:fixed;inset:0;background:rgba(0,0,0,.6);display:flex;align-items:flex-end;justify-content:center;z-index:5}
+#sheet .in{width:100%;max-width:560px;max-height:90%;overflow:auto;background:var(--sheet);border-radius:18px 18px 0 0;padding:16px 16px calc(env(safe-area-inset-bottom,0px) + 20px)}
+.hd{display:flex;align-items:center;gap:8px;margin-bottom:12px}
+.hd input{flex:1;min-width:0;background:none;border:0;border-bottom:1px dashed var(--line);color:var(--text);font:700 18px var(--font);padding:4px 0}
+.hd input:focus{outline:none;border-color:var(--amber)}
+.tabs{display:flex;gap:6px;margin-bottom:14px}
+.tabs button{flex:1;border-radius:10px}
+.tabs button.sel{border-color:#fff;background:#fff;color:#000}
+.tot{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.tot div{padding:12px;border-radius:12px;background:var(--row)}
+.tot small{display:block;font-size:12px;color:var(--muted)}
+.tot b,.tot input{font-size:22px;font-weight:700;font-variant-numeric:tabular-nums}
+.tot input{width:100%;background:none;border:0;border-bottom:1px dashed var(--line);color:var(--text);font-family:var(--font);padding:0}
+.tot input:focus{outline:none;border-color:var(--amber)}
+.verdict{margin-top:10px;padding:12px 14px;border-radius:12px;font-weight:700;line-height:1.5}
+.verdict small{display:block;font-weight:400;font-size:13px}
+.verdict.ok{background:rgba(74,222,128,.12);color:var(--green)}
+.verdict.bad{background:rgba(255,107,107,.12);color:var(--red)}
+.verdict.wait{background:var(--row);color:var(--muted);font-weight:500}
+.sec{margin:18px 0 6px;font-size:13px;color:var(--muted)}
+.list{display:grid;gap:6px}
+.item{display:flex;gap:10px;align-items:center;padding:10px 12px;border-radius:10px;background:var(--row);font-size:14px;line-height:1.4;width:100%;text-align:left;border:0}
+.item.remote{background:rgba(255,176,32,.12);color:#ffe2a8}
+.item b{font-variant-numeric:tabular-nums}
+.item .r{margin-left:auto;text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+.item small{display:block;color:var(--muted);font-size:12px}
+.pill{font-size:12px;padding:2px 8px;border-radius:99px;border:1px solid currentColor;white-space:nowrap}
+.pill.ok{color:var(--green)} .pill.bad{color:var(--red)} .pill.am{color:var(--amber)}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(96px,1fr));gap:4px;font-size:13px;font-variant-numeric:tabular-nums}
+.grid span{padding:6px 8px;border-radius:8px;background:var(--row);display:flex;justify-content:space-between;gap:6px}
+.grid span.remote{background:rgba(255,176,32,.18);color:var(--amber)}
+.grid span i{font-style:normal;color:var(--muted)}
+.acts{display:flex;gap:8px;margin-top:18px;flex-wrap:wrap}
+.acts button{flex:1;min-width:140px;border-radius:12px;padding:12px}
+.acts .pri{background:var(--amber);color:#000;border-color:var(--amber);font-weight:700}
+.acts .danger{color:var(--red);border-color:rgba(255,107,107,.5)}
+.empty{color:var(--muted);font-size:14px;padding:12px 0}
+</style>
+</head>
+<body>
+<video id="video" playsinline muted autoplay></video>
+<img id="still" alt="" hidden>
+<canvas id="ov"></canvas>
+<div id="bar">
+  <span class="chip" id="status">กำลังเปิดกล้อง…</span>
+  <span class="sp"></span>
+  <button id="sessBtn" aria-label="ดูชุดที่สแกน">ชุด · 0 แถว</button>
+  <button id="torch" hidden aria-label="ไฟฉาย">⚡</button>
+  <button id="cam" hidden aria-label="กลับไปใช้กล้อง">📷</button>
+  <button id="pick" aria-label="เลือกรูป">🖼</button>
+</div>
+<div id="msg" hidden></div>
+<div id="strip" hidden></div>
+<div id="sheet" hidden><div class="in" id="sheetIn"></div></div>
+<input type="file" id="file" accept="image/*" multiple hidden>
+
+<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js"></script>
+<script>
+// รหัสไปรษณีย์ 85 พื้นที่ห่างไกล/เกาะ (ประกาศไปรษณีย์ไทย มีผล 1 ม.ค. 2569)
+// [ลำดับ, จังหวัด, ที่ทำการ, รหัส, พื้นที่ ('' = ทุกพื้นที่ของรหัส)]
+const DATA=[
+[1,'ชลบุรี','เกาะสีชัง','20120',''],[2,'ชลบุรี','บางละมุง','20150','เฉพาะเกาะล้าน'],
+[3,'ระยอง','เพ','21160','เฉพาะเกาะเสม็ด'],[4,'ตราด','ตราด','23000','เฉพาะเกาะกูด'],
+[5,'ตราด','แหลมงอบ','23120','เฉพาะเกาะหมาก'],[6,'ตราด','เกาะช้าง','23170',''],
+[7,'เชียงใหม่','สะเมิง','50250',''],[8,'เชียงใหม่','อมก๋อย','50310',''],[9,'เชียงใหม่','เวียงแหง','50350',''],
+[10,'น่าน','ทุ่งช้าง','55130',''],[11,'น่าน','บ่อเกลือ','55220',''],
+[12,'เชียงราย','เวียงป่าเป้า','57170',''],[13,'เชียงราย','แม่สรวย','57180',''],[14,'เชียงราย','แม่เจดีย์','57260',''],
+[15,'เชียงราย','เวียงแก่น','57310',''],[16,'เชียงราย','ขุนตาล','57340',''],
+[17,'แม่ฮ่องสอน','แม่ฮ่องสอน','58000',''],[18,'แม่ฮ่องสอน','แม่สะเรียง','58110',''],[19,'แม่ฮ่องสอน','แม่ลาน้อย','58120',''],
+[20,'แม่ฮ่องสอน','ปาย','58130',''],[21,'แม่ฮ่องสอน','ขุนยวม','58140',''],[22,'แม่ฮ่องสอน','ปางมะผ้า','58150',''],
+[23,'ตาก','ท่าสองยาง','63150',''],[24,'ตาก','อุ้มผาง','63170',''],
+[25,'กาญจนบุรี','ทองผาภูมิ','71180',''],[26,'กาญจนบุรี','สังขละบุรี','71240',''],
+[27,'กระบี่','เหนือคลอง','81130','เฉพาะเกาะศรีบอยา'],[28,'กระบี่','เกาะลันตา','81150',''],[29,'กระบี่','เกาะพีพี','81210',''],
+[30,'พังงา','พังงา','82000','เฉพาะเกาะปันหยี'],[31,'พังงา','เกาะยาว','82160',''],
+[32,'ภูเก็ต','ภูเก็ต','83000',''],[33,'ภูเก็ต','กะรน','83100',''],[34,'ภูเก็ต','ถลาง','83110',''],
+[35,'ภูเก็ต','กะทู้','83120',''],[36,'ภูเก็ต','ราไวย์','83130',''],[37,'ภูเก็ต','ป่าตอง','83150',''],
+[38,'สุราษฎร์ธานี','เกาะสมุย','84140',''],[39,'สุราษฎร์ธานี','ละไม','84310',''],[40,'สุราษฎร์ธานี','เฉวง','84320',''],
+[41,'สุราษฎร์ธานี','แม่น้ำ','84330',''],[42,'สุราษฎร์ธานี','ดอนสัก','84220','เฉพาะเกาะพลวย'],[43,'สุราษฎร์ธานี','ดอนสัก','84220','เฉพาะเกาะนกเภา'],
+[44,'สุราษฎร์ธานี','เกาะพะงัน','84280',''],[45,'สุราษฎร์ธานี','เกาะเต่า','84360',''],
+[46,'ระนอง','ระนอง','85000','เฉพาะเกาะพยาม'],
+[47,'สตูล','สตูล','91000','เฉพาะเกาะสาหร่าย'],[48,'สตูล','สตูล','91000','เฉพาะปูยู'],
+[49,'สตูล','ละงู','91110','เฉพาะเกาะหลีเป๊ะ'],[50,'สตูล','ละงู','91110','เฉพาะเกาะบุโหลน'],
+[51,'ตรัง','กันตัง','92110','เฉพาะเกาะลิบง'],[52,'ตรัง','กันตัง','92110','เฉพาะเกาะมุก'],[53,'ตรัง','ปะเหลียน','92120','เฉพาะเกาะสุกร'],
+[54,'ปัตตานี','ปัตตานี','94000',''],[55,'ปัตตานี','สายบุรี','94110',''],[56,'ปัตตานี','โคกโพธิ์','94120',''],
+[57,'ปัตตานี','ปะนาเระ','94130',''],[58,'ปัตตานี','มายอ','94140',''],[59,'ปัตตานี','ยะหริ่ง','94150',''],
+[60,'ปัตตานี','ยะรัง','94160',''],[61,'ปัตตานี','หนองจิก','94170',''],[62,'ปัตตานี','นาประดู่','94180',''],
+[63,'ปัตตานี','ปาลัส','94190',''],[64,'ปัตตานี','ไม้แก่น','94220',''],[65,'ปัตตานี','กะพ้อ','94230',''],
+[66,'ยะลา','ยะลา','95000',''],[67,'ยะลา','เบตง','95110',''],[68,'ยะลา','ยะหา','95120',''],[69,'ยะลา','บันนังสตา','95130',''],
+[70,'ยะลา','รามัน','95140',''],[71,'ยะลา','ธารโต','95150',''],[72,'ยะลา','ลำใหม่','95160',''],[73,'ยะลา','แม่หวาด','95170',''],
+[74,'นราธิวาส','นราธิวาส','96000',''],[75,'นราธิวาส','ตากใบ','96110',''],[76,'นราธิวาส','สุไหงโก-ลก','96120',''],
+[77,'นราธิวาส','ตันหยงมัส','96130',''],[78,'นราธิวาส','สุไหงปาดี','96140',''],[79,'นราธิวาส','รือเสาะ','96150',''],
+[80,'นราธิวาส','แว้ง','96160',''],[81,'นราธิวาส','บาเจาะ','96170',''],[82,'นราธิวาส','ยี่งอ','96180',''],
+[83,'นราธิวาส','สุคิริน','96190',''],[84,'นราธิวาส','ศรีสาคร','96210',''],[85,'นราธิวาส','ดุซงญอ','96220',''],
+];
+const BY_CODE={};
+for(const [seq,prov,office,code,area] of DATA) (BY_CODE[code] ||= []).push({seq,prov,office,area});
+const $=id=>document.getElementById(id);
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const baht=n=>n==null||isNaN(n)?'—':Number(n).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
+const video=$('video'), still=$('still'), ov=$('ov'), ctx=ov.getContext('2d');
+const grab=document.createElement('canvas'), gctx=grab.getContext('2d',{willReadFrequently:true});
+let mode='cam', worker=null, dets=[], seen=new Set(), lastBeep=0;
+
+/* ================= Sessions (ชุดเอกสาร) — kept on this phone ================= */
+// session = {id, name, created, updated, rows:{seq:{price:{v:n}, code:{v:n}}}, totals:{v:n}, manualTotal, loose:{code:n}}
+const KEY='ras-sessions-v1';
+let sessions=[], curId=null;
+try{ const s=JSON.parse(localStorage.getItem(KEY)); if(s?.list){ sessions=s.list; curId=s.cur; } }catch(e){}
+function persist(){ try{ localStorage.setItem(KEY,JSON.stringify({list:sessions,cur:curId})); }catch(e){} }
+function newSession(){
+  const d=new Date();
+  const s={id:String(Date.now()),name:`ชุด ${d.getDate()}/${d.getMonth()+1} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`,
+    created:Date.now(),updated:Date.now(),rows:{},totals:{},manualTotal:null,loose:{}};
+  sessions.unshift(s); curId=s.id; persist(); return s;
+}
+const cur=()=>sessions.find(s=>s.id===curId)||newSession();
+const isEmpty=s=>!Object.keys(s.rows).length&&!Object.keys(s.loose).length&&!Object.keys(s.totals).length&&s.manualTotal==null;
+const topVote=v=>{ let b=null,n=0; for(const k in v||{}) if(v[k]>n){n=v[k];b=k;} return b; };
+const inc=(o,k,w=1)=>{ o[k]=(o[k]||0)+w; };
+
+function summary(s){
+  const rows=Object.entries(s.rows).map(([seq,r])=>{
+    const k=topVote(r.price); let price=k!=null?+k:null, unsure=false;
+    if(k!=null&&!/\.(00|25|50|75)$/.test(k)){ price=Math.round(price*4)/4; unsure=true; }   // odd satang: misread, round and flag
+    return {seq:+seq,price,unsure,code:topVote(r.code)};
+  }).sort((a,b)=>a.seq-b.seq);
+  const cents=rows.reduce((t,r)=>t+(r.price!=null?Math.round(r.price*100):0),0);
+  const maxSeq=rows.length?rows.at(-1).seq:0;
+  const have=new Set(rows.map(r=>r.seq)); const missing=[]; for(let i=1;i<=maxSeq;i++) if(!have.has(i)) missing.push(i);
+  const total=s.manualTotal!=null?s.manualTotal:(topVote(s.totals)!=null?+topVote(s.totals):null);
+  const diff=total==null?null:Math.round(total*100)-cents;
+  const remote=rows.filter(r=>BY_CODE[r.code]);
+  // most common price among normal rows: a remote row at that price may be a misread code or a missing +20
+  const pc={}; rows.filter(r=>!BY_CODE[r.code]&&r.price!=null).forEach(r=>inc(pc,r.price.toFixed(2)));
+  const usual=topVote(pc)!=null?+topVote(pc):null;
+  remote.forEach(r=>r.suspect=usual!=null&&r.price!=null&&r.price<=usual);
+  const rowCodes=new Set(rows.map(r=>r.code));
+  const loose=Object.keys(s.loose).filter(c=>!rowCodes.has(c));
+  return {rows,sum:cents/100,maxSeq,missing,total,diff,remote,loose,noPrice:rows.filter(r=>r.price==null),unsure:rows.filter(r=>r.unsure)};
+}
+function refreshSessBtn(){
+  const a=summary(cur()), b=$('sessBtn');
+  let t=`ชุด · ${a.rows.length} แถว`; if(a.rows.length) t+=` · ฿${baht(a.sum)}`;
+  if(a.remote.length+a.loose.length) t+=` · ⚑${a.remote.length+a.loose.length}`;
+  b.className=''; if(a.total!=null&&a.rows.length){ if(a.diff===0){ b.className='ok'; t+=' ✓'; } else { b.className='bad'; t+=' ✗'; } }
+  b.textContent=t;
+}
+
+/* ================= Reading a frame ================= */
+const FIX={O:'0',o:'0',D:'0',Q:'0',I:'1',l:'1','|':'1',i:'1',S:'5',s:'5',B:'8',Z:'2',z:'2',G:'6'};
+function asPostcode(t){
+  t=t.replace(/^[^\w|]+|[^\w|]+$/g,'');
+  if(t.length!==5||(t.match(/\d/g)||[]).length<4) return null;
+  t=[...t].map(c=>FIX[c]??c).join('');
+  return /^[1-9]\d{4}$/.test(t)?t:null;
+}
+function asMoney(t){ t=t.replace(/^[^\d]+|[^\d]+$/g,''); return /^\d{1,3}(,\d{3})+\.\d{2}$|^\d{1,6}\.\d{2}$/.test(t)?parseFloat(t.replace(/,/g,'')):null; }
+const asSeq=t=>{ t=t.replace(/[.)\]]$/,''); return /^\d{1,3}$/.test(t)&&+t>0?+t:null; };
+
+// Table rows are anchored on the postcode column. The printed ลำดับ is read where possible, then every row's
+// number is taken from a local fit of row position (y) against the clearly-read numbers, so a missed or
+// misread ลำดับ (1 read as nothing, 31 read as 3) still gets the right number.
+const median=a=>{ const b=[...a].sort((x,y)=>x-y); return b.length?b[b.length>>1]:null; };
+function tableRows(words){
+  const W=words.map(w=>{ const b=w.bbox; return {w,t:w.text.trim(),b,cy:(b.y0+b.y1)/2,h:b.y1-b.y0}; }).filter(x=>x.t);
+  const next=(a,dir)=>{ let best=null;
+    for(const x of W){ if(x===a) continue;
+      const dx=dir>0?x.b.x0-a.b.x1:a.b.x0-x.b.x1; if(dx<-a.h*.3) continue;
+      if(Math.abs(x.cy-a.cy)>0.6*Math.max(a.h,x.h)) continue;
+      if(!best||dx<best.dx) best={x,dx}; }
+    return best?.x; };
+  const walk=(a,dir)=>{ const out=[]; for(let k=0;k<30;k++){ a=next(a,dir); if(!a||out.includes(a)) break; out.push(a); } return out; };
+
+  // postcodes of the destination column only (drops the sender address, footer, etc.)
+  let pcs=W.filter(x=>(x.pc=asPostcode(x.t)));
+  if(pcs.length>=3){ const mx=median(pcs.map(x=>x.b.x0)); pcs=pcs.filter(x=>Math.abs(x.b.x0-mx)<3*x.h); }
+  const rows=pcs.map(p=>{
+    const left=walk(p,-1), right=walk(p,1);
+    const first=left.at(-1); const readSeq=first?asSeq(first.t):null;
+    const money=right.map(x=>asMoney(x.t)).filter(m=>m!=null&&m<10000);
+    return {p,y:p.cy,readSeq,code:p.pc,codeWord:p.w,price:money.length?money[0]:null,line:[p,...left,...right]};
+  });
+
+  // fit y ≈ a + pitch·seq from the rows whose number was read, keep the consistent ones
+  const anchors=rows.filter(r=>r.readSeq!=null);
+  const slopes=[]; for(let i=0;i<anchors.length;i++) for(let j=i+1;j<anchors.length;j++){ const ds=anchors[j].readSeq-anchors[i].readSeq; if(ds) slopes.push((anchors[j].y-anchors[i].y)/ds); }
+  const pitch=median(slopes.filter(v=>v>0));
+  let inl=[];
+  if(pitch){ const a0=median(anchors.map(r=>r.y-pitch*r.readSeq)); inl=anchors.filter(r=>Math.abs(r.y-(a0+pitch*r.readSeq))<0.4*pitch); }
+  for(const r of rows){
+    if(inl.length>=3){
+      // local fit on the nearest good anchors copes with perspective in a hand-held photo
+      const near=[...inl].sort((a,b)=>Math.abs(a.y-r.y)-Math.abs(b.y-r.y)).slice(0,5);
+      const ls=[]; for(let i=0;i<near.length;i++) for(let j=i+1;j<near.length;j++){ const ds=near[j].readSeq-near[i].readSeq; if(ds) ls.push((near[j].y-near[i].y)/ds); }
+      const lp=median(ls.filter(v=>v>0))||pitch, la=median(near.map(n=>n.y-lp*n.readSeq));
+      r.seq=Math.round((r.y-la)/lp);
+    }else r.seq=r.readSeq;
+  }
+  const good=rows.filter(r=>r.seq!=null&&r.seq>0&&r.seq<1000);
+
+  // "รวมเงิน": a money value that is not on any row and bigger than every row price
+  const onRow=new Set(rows.flatMap(r=>r.line));
+  const maxP=Math.max(0,...good.map(r=>r.price||0));
+  const totals=W.filter(x=>!onRow.has(x)).map(x=>asMoney(x.t)).filter(m=>m!=null&&m>maxP&&m>=100);
+  return {rows:good,total:totals.length?Math.max(...totals):null};
+}
+
+function srcSize(){ return mode==='cam'?[video.videoWidth,video.videoHeight]:[still.naturalWidth,still.naturalHeight]; }
+function toScreen(b){
+  const [sw,sh]=srcSize(), W=ov.clientWidth, H=ov.clientHeight;
+  const k=mode==='cam'?Math.max(W/sw,H/sh):Math.min(W/sw,H/sh);
+  return {x:(W-sw*k)/2+b.x0*k, y:(H-sh*k)/2+b.y0*k, w:(b.x1-b.x0)*k, h:(b.y1-b.y0)*k};
+}
+
+// each preprocessing catches different digits, so passes rotate through them
+const FILTERS=['grayscale(1) contrast(1.35)','grayscale(1) contrast(2)','none'];
+async function scanOnce(filter=FILTERS[0]){
+  const [sw,sh]=srcSize(); if(!sw) return;
+  const s=Math.min(1,(mode==='cam'?1600:2400)/Math.max(sw,sh));   // never enlarge: upscaled photos read worse
+  grab.width=Math.round(sw*s); grab.height=Math.round(sh*s);
+  gctx.filter=filter;
+  gctx.drawImage(mode==='cam'?video:still,0,0,grab.width,grab.height);
+  const {data}=await worker.recognize(grab);
+  const now=performance.now(); let fresh=false;
+  const words=(data.words||[]).filter(w=>w.confidence>=35);
+
+  // add what this frame shows to the current session
+  const S=cur(), tr=tableRows(words);
+  for(const r of tr.rows){
+    const row=(S.rows[r.seq] ||= {price:{},code:{}});
+    // postal charges end in .00/.25/.50/.75; an odd satang is usually a misread digit, so it counts less
+    if(r.price!=null){ const k=r.price.toFixed(2); inc(row.price,k,/\.(00|25|50|75)$/.test(k)?1:0.3); }
+    if(r.code) inc(row.code,r.code);
+  }
+  if(tr.total!=null) inc(S.totals,tr.total.toFixed(2));
+
+  const rowOf=new Map(tr.rows.filter(r=>r.codeWord).map(r=>[r.codeWord,r]));
+  for(const w of words){
+    const code=asPostcode(w.text); if(!code||!BY_CODE[code]) continue;   // only remote-area codes get a box
+    const b={x0:w.bbox.x0/s,y0:w.bbox.y0/s,x1:w.bbox.x1/s,y1:w.bbox.y1/s};
+    const r=rowOf.get(w), row=r?.seq??null, price=r?.price??null;
+    if(row==null) inc(S.loose,code);                  // e.g. a single parcel label
+    const prev=dets.find(d=>d.code===code&&Math.abs(d.b.x0-b.x0)<200&&Math.abs(d.b.y0-b.y0)<200);
+    if(prev){ prev.target=b; prev.t=now; if(row!=null){prev.row=row;prev.price=price;} } else { dets.push({code,b:{...b},target:b,t:now,row,price}); }
+    if(!seen.has(code)){ seen.add(code); fresh=true; }
+  }
+  if(tr.rows.length||tr.total!=null||dets.length){ S.updated=Date.now(); persist(); refreshSessBtn(); if(!$('sheet').hidden&&sheetView==='cur') renderSheet(); }
+
+  dets=dets.filter(d=>mode!=='cam'||now-d.t<1500);
+  if(fresh||(dets.length&&now-lastBeep>4000)){ if(dets.length){ beep(); lastBeep=now; } }
+  const n=dets.length, st=$('status');
+  st.textContent=n?`พบพื้นที่ห่างไกล ${n} จุด`:(mode==='cam'?'กำลังสแกน…':'ไม่พบรหัสพื้นที่ห่างไกล');
+  st.className='chip'+(n?' hit':'');
+}
+
+/* ================= Boxes + labels ================= */
+function rr(x,y,w,h,r){ctx.beginPath();ctx.roundRect?ctx.roundRect(x,y,w,h,r):ctx.rect(x,y,w,h);}
+function draw(ts){
+  const dpr=devicePixelRatio||1, W=ov.clientWidth, H=ov.clientHeight;
+  if(ov.width!==W*dpr||ov.height!==H*dpr){ov.width=W*dpr;ov.height=H*dpr;}
+  ctx.setTransform(dpr,0,0,dpr,0,0); ctx.clearRect(0,0,W,H);
+  const now=performance.now();
+  for(const d of dets){
+    for(const k of ['x0','y0','x1','y1']) d.b[k]+=(d.target[k]-d.b[k])*.35;
+    const r=toScreen(d.b), p=6; r.x-=p; r.y-=p; r.w+=p*2; r.h+=p*2;
+    ctx.globalAlpha=mode==='cam'?Math.max(0,1-(now-d.t)/1500):1;
+    ctx.shadowColor='#ffb020'; ctx.shadowBlur=12+8*Math.sin(ts/180);
+    ctx.strokeStyle='#ffb020'; ctx.lineWidth=3; rr(r.x,r.y,r.w,r.h,6); ctx.stroke();
+    ctx.fillStyle='rgba(255,176,32,.15)'; ctx.fill(); ctx.shadowBlur=0;
+    const list=BY_CODE[d.code], e=list[0];
+    const t1=(d.row!=null?`ลำดับ ${d.row} · `:'')+`${e.office} · ${e.prov}`;
+    const t2=list.some(x=>x.area)?'⚠ '+list.map(x=>x.area.replace('เฉพาะ','')).join(' / '):'';
+    ctx.font='700 14px "IBM Plex Sans Thai",sans-serif';
+    let lw=ctx.measureText(t1).width;
+    if(t2){ ctx.font='500 12px "IBM Plex Sans Thai",sans-serif'; lw=Math.max(lw,ctx.measureText(t2).width); }
+    lw+=16; const lh=t2?42:26;
+    const lx=Math.min(Math.max(4,r.x),W-lw-4); let ly=r.y-lh-4; if(ly<60) ly=r.y+r.h+4;
+    ctx.fillStyle='rgba(0,0,0,.8)'; rr(lx,ly,lw,lh,6); ctx.fill();
+    ctx.fillStyle='#ffb020'; ctx.font='700 14px "IBM Plex Sans Thai",sans-serif'; ctx.fillText(t1,lx+8,ly+18);
+    if(t2){ ctx.fillStyle='#ffe2a8'; ctx.font='500 12px "IBM Plex Sans Thai",sans-serif'; ctx.fillText(t2,lx+8,ly+35); }
+    ctx.globalAlpha=1;
+  }
+  requestAnimationFrame(draw);
+}
+
+/* ================= Session sheet ================= */
+let sheetView='cur', viewId=null, armed=null;
+function sessionHTML(s,isCur){
+  const a=summary(s);
+  let v;
+  if(!a.rows.length) v=`<div class="verdict wait">ยังไม่มีรายการ — ส่องกล้องหรือเลือกรูปใบนำส่ง ทุกหน้าของใบเดียวกันจะรวมอยู่ในชุดนี้</div>`;
+  else if(a.total==null) v=`<div class="verdict wait">ยังไม่เห็นยอด "รวมเงิน" — สแกนหน้าสุดท้ายของใบ หรือพิมพ์ยอดเองในช่องด้านบน</div>`;
+  else if(a.diff===0) v=`<div class="verdict ok">✓ ค่าบริการรวมตรงกับยอดในใบ<small>${a.rows.length} แถว รวม ฿${baht(a.sum)}${a.missing.length?` · แต่ยังไม่เห็นลำดับ ${a.missing.join(', ')}`:''}</small></div>`;
+  else v=`<div class="verdict bad">✗ ไม่ตรง ต่างกัน ฿${baht(Math.abs(a.diff)/100)}<small>${a.diff>0?'ยอดในใบมากกว่าที่รวมได้':'ที่รวมได้มากกว่ายอดในใบ'}${a.missing.length?` · ยังไม่ได้สแกนลำดับ ${a.missing.slice(0,30).join(', ')}${a.missing.length>30?' …':''}`:''}${a.noPrice.length?` · อ่านราคาไม่ได้ ลำดับ ${a.noPrice.map(r=>r.seq).join(', ')}`:''}</small></div>`;
+  const rem=[...a.remote.map(r=>{ const e=BY_CODE[r.code]; return `<div class="item remote"><div><b>ลำดับ ${r.seq} · ${r.code}</b><small>${esc(e[0].office)} · ${esc(e[0].prov)}${e.some(x=>x.area)?' · ⚠ '+e.map(x=>x.area.replace('เฉพาะ','')).join(' / '):''}${r.suspect?'<br><span style="color:var(--red)">ราคาเท่าแถวปกติ — ยังไม่บวก +20 หรือรหัสอ่านผิด ตรวจอีกครั้ง</span>':''}</small></div><span class="r">฿${baht(r.price)}</span></div>`; }),
+    ...a.loose.map(c=>{ const e=BY_CODE[c]; return `<div class="item remote"><div><b>${c}</b><small>${esc(e[0].office)} · ${esc(e[0].prov)} · ไม่ทราบลำดับ</small></div></div>`; })].join('');
+  const grid=a.rows.map(r=>`<span class="${BY_CODE[r.code]?'remote':''}"${r.unsure?' style="outline:1px dashed var(--red)"':''}><i>${r.seq}</i>${r.price!=null?baht(r.price)+(r.unsure?'?':''):'?'}</span>`).join('');
+  const unsureNote=a.unsure.length?`<div class="verdict wait" style="margin-top:8px">อ่านไม่ชัด ตรวจด้วยตา: ${a.unsure.map(r=>`ลำดับ ${r.seq} (ถือเป็น ${baht(r.price)})`).join(', ')}</div>`:'';
+  return `<div class="hd"><input id="sName" value="${esc(s.name)}" aria-label="ชื่อชุด"><button id="sClose" aria-label="ปิด">✕</button></div>
+    ${isCur?'':`<div class="verdict wait" style="margin:0 0 12px">ชุดจากประวัติ · ${new Date(s.created).toLocaleString('th-TH')}</div>`}
+    <div class="tot"><div><small>รวมค่าบริการที่สแกนได้</small><b>฿${baht(a.sum)}</b><small>${a.rows.length} แถว${a.maxSeq?` · ถึงลำดับ ${a.maxSeq}`:''}</small></div>
+      <div><small>ยอด "รวมเงิน" ในใบ${s.manualTotal!=null?' (พิมพ์เอง)':''}</small><input id="sTotal" inputmode="decimal" placeholder="—" value="${a.total!=null?baht(a.total):''}" aria-label="ยอดรวมเงินในใบ"><small>แก้ได้ถ้าอ่านผิด</small></div></div>
+    ${v}${unsureNote}
+    <div class="sec">พื้นที่ห่างไกล / เกาะ (${a.remote.length+a.loose.length})</div>
+    <div class="list">${rem||'<div class="empty">ไม่พบ</div>'}</div>
+    ${a.rows.length?`<div class="sec">ค่าบริการแต่ละลำดับ</div><div class="grid">${grid}</div>`:''}
+    <div class="acts">${isCur
+      ?`<button class="pri" id="sNew">จบชุดนี้ เริ่มชุดใหม่</button><button id="sHist">ประวัติ (${sessions.filter(x=>!isEmpty(x)).length})</button><button class="danger" id="sDel">ล้างชุดนี้</button>`
+      :`<button class="pri" id="sResume">สแกนต่อในชุดนี้</button><button id="sHist">กลับไปประวัติ</button><button class="danger" id="sDel">ลบชุดนี้</button>`}</div>`;
+}
+function historyHTML(){
+  const list=sessions.filter(s=>!isEmpty(s)||s.id===curId);
+  return `<div class="hd"><b style="flex:1;font-size:18px">ประวัติการสแกน</b><button id="sClose" aria-label="ปิด">✕</button></div>
+    <div class="list">${list.map(s=>{ const a=summary(s);
+      const st=a.total==null||!a.rows.length?'<span class="pill">ไม่มียอด</span>':a.diff===0?'<span class="pill ok">✓ ตรง</span>':'<span class="pill bad">✗ ไม่ตรง</span>';
+      return `<button class="item" data-id="${s.id}"><div><b>${esc(s.name)}${s.id===curId?' · ชุดปัจจุบัน':''}</b><small>${new Date(s.updated).toLocaleString('th-TH')} · ${a.rows.length} แถว · ฿${baht(a.sum)}${a.remote.length+a.loose.length?` · ⚑ ห่างไกล ${a.remote.length+a.loose.length}`:''}</small></div><span class="r">${st}</span></button>`; }).join('')||'<div class="empty">ยังไม่มีประวัติ</div>'}</div>
+    <div class="acts"><button id="sBack">กลับไปชุดปัจจุบัน</button></div>`;
+}
+function renderSheet(){
+  const el=$('sheetIn'); armed=null;
+  if(sheetView==='hist'){ el.innerHTML=historyHTML();
+    el.querySelectorAll('.item[data-id]').forEach(b=>b.onclick=()=>{ if(b.dataset.id===curId){sheetView='cur';} else {sheetView='view';viewId=b.dataset.id;} renderSheet(); });
+    $('sBack').onclick=()=>{ sheetView='cur'; renderSheet(); };
+  }else{
+    const s=sheetView==='cur'?cur():sessions.find(x=>x.id===viewId);
+    if(!s){ sheetView='hist'; return renderSheet(); }
+    const isCur=sheetView==='cur';
+    // keep focus in the total box while live frames re-render the sheet
+    const focusTot=document.activeElement?.id==='sTotal', focusName=document.activeElement?.id==='sName';
+    if(focusTot||focusName) return;
+    el.innerHTML=sessionHTML(s,isCur);
+    $('sName').onchange=e=>{ s.name=e.target.value.trim()||s.name; persist(); };
+    $('sTotal').onchange=e=>{ const v=parseFloat(e.target.value.replace(/,/g,'')); s.manualTotal=isNaN(v)?null:v; persist(); refreshSessBtn(); renderSheet(); };
+    $('sHist').onclick=()=>{ sheetView='hist'; renderSheet(); };
+    const del=$('sDel');
+    del.onclick=()=>{ if(armed!=='del'){ armed='del'; del.textContent='แตะอีกครั้งเพื่อยืนยัน'; return; }
+      sessions=sessions.filter(x=>x.id!==s.id); if(s.id===curId) newSession(); else persist();
+      sheetView=isCur?'cur':'hist'; refreshSessBtn(); renderSheet(); };
+    if(isCur) $('sNew').onclick=()=>{ if(isEmpty(cur())) sessions=sessions.filter(x=>x.id!==curId); newSession(); dets=[]; seen=new Set(); refreshSessBtn(); renderSheet(); };
+    else $('sResume').onclick=()=>{ if(isEmpty(cur())) sessions=sessions.filter(x=>x.id!==curId); curId=s.id; persist(); sheetView='cur'; refreshSessBtn(); renderSheet(); };
+  }
+  $('sClose').onclick=()=>$('sheet').hidden=true;
+}
+$('sessBtn').onclick=()=>{ sheetView='cur'; $('sheet').hidden=false; renderSheet(); };
+$('sheet').onclick=e=>{ if(e.target.id==='sheet') $('sheet').hidden=true; };
+
+/* ================= Beep + vibrate on a find ================= */
+let actx=null;
+addEventListener('pointerdown',()=>{ try{ actx ||= new AudioContext(); actx.resume(); }catch(e){} },{once:true});
+function beep(){
+  try{ actx ||= new AudioContext(); const o=actx.createOscillator(), g=actx.createGain(); o.connect(g); g.connect(actx.destination);
+    o.frequency.value=1100; g.gain.setValueAtTime(.12,actx.currentTime); g.gain.exponentialRampToValueAtTime(.001,actx.currentTime+.2);
+    o.start(); o.stop(actx.currentTime+.21); }catch(e){}
+  try{ navigator.vibrate?.(80); }catch(e){}
+}
+
+/* ================= Camera ================= */
+async function getWorker(){
+  if(!worker){ worker=await Tesseract.createWorker('eng',1); await worker.setParameters({tessedit_pageseg_mode:'11'}); }
+  return worker;
+}
+async function startCam(){
+  try{
+    const stream=await navigator.mediaDevices.getUserMedia({audio:false,video:{facingMode:{ideal:'environment'},width:{ideal:1920},height:{ideal:1080}}});
+    video.srcObject=stream; await video.play();
+    const track=stream.getVideoTracks()[0], caps=track.getCapabilities?.()||{};
+    if(caps.torch){ const b=$('torch'); b.hidden=false; let on=false;
+      b.onclick=async()=>{ on=!on; b.classList.toggle('on',on); try{ await track.applyConstraints({advanced:[{torch:on}]}); }catch(e){} }; }
+  }catch(e){
+    $('status').textContent='เปิดกล้องไม่ได้';
+    $('msg').hidden=false;
+    $('msg').innerHTML='เปิดกล้องไม่ได้<br>ต้องเปิดผ่าน https และกดอนุญาตให้ใช้กล้อง<br><button onclick="document.getElementById(\'file\').click()">เลือกรูปแทน</button>';
+    return;
+  }
+  $('status').textContent='กำลังโหลดตัวอ่าน…';
+  await getWorker();
+  $('status').textContent='กำลังสแกน…';
+  for(let i=0;mode==='cam';i++){ try{ await scanOnce(FILTERS[i%FILTERS.length]); }catch(e){ await new Promise(r=>setTimeout(r,300)); } }
+}
+
+/* ================= Several photos ================= */
+// read them one after another, keep each photo's boxes, tap a thumbnail to view it
+let shots=[], curShot=-1;
+function renderStrip(){
+  $('strip').innerHTML=shots.map((p,i)=>`<button class="${i===curShot?'sel':''} ${p.dets?.length?'has':''}" data-i="${i}" aria-label="รูปที่ ${i+1}"><img src="${p.url}" alt="">${p.dets?(p.dets.length?`<span>${p.dets.length}</span>`:''):'<span class="wait">…</span>'}</button>`).join('');
+  $('strip').querySelectorAll('button').forEach(b=>b.onclick=()=>showShot(+b.dataset.i));
+}
+function statusLine(){
+  const found=shots.filter(p=>p.dets?.length).length, all=shots.reduce((n,p)=>n+(p.dets?.length||0),0), done=shots.filter(p=>p.dets).length;
+  const st=$('status');
+  st.textContent=`รูป ${curShot+1}/${shots.length} · `+(done<shots.length?`กำลังอ่าน ${done}/${shots.length}…`:all?`พบ ${all} จุด ใน ${found} รูป`:'ไม่พบรหัสพื้นที่ห่างไกล');
+  st.className='chip'+(all?' hit':'');
+}
+async function showShot(i){
+  curShot=i; const p=shots[i];
+  still.src=p.url; await still.decode().catch(()=>{});
+  dets=p.dets?p.dets.map(d=>({...d,b:{...d.target}})):[];
+  renderStrip(); statusLine();
+}
+$('pick').onclick=()=>$('file').click();
+$('file').onchange=async()=>{
+  const files=[...$('file').files]; $('file').value=''; if(!files.length) return;
+  mode='img';
+  video.srcObject?.getTracks().forEach(t=>t.stop()); video.hidden=true; $('msg').hidden=true; $('torch').hidden=true;
+  still.hidden=false; $('strip').hidden=false; $('cam').hidden=false;
+  const start=shots.length;
+  shots.push(...files.map(f=>({url:URL.createObjectURL(f),dets:null})));
+  await getWorker();
+  for(let i=start;i<shots.length;i++){
+    await showShot(i);
+    dets=[]; seen=new Set();
+    for(const f of FILTERS) await scanOnce(f);
+    shots[i].dets=dets.map(d=>({...d}));
+    renderStrip(); statusLine();
+  }
+  const firstHit=shots.findIndex((p,i)=>i>=start&&p.dets.length);
+  if(firstHit>=0) showShot(firstHit);
+  $('sessBtn').click();   // show the session result after reading the photos
+};
+$('cam').onclick=()=>location.reload();
+
+refreshSessBtn();
+requestAnimationFrame(draw);
+startCam();
+</script>
+</body>
+</html>

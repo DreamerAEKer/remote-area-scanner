@@ -85,18 +85,10 @@ button.on{border-color:var(--amber);color:var(--amber)}
 .cells i{width:9px;height:9px;border-radius:2px;background:rgba(255,255,255,.14)}
 .cells i.ok{background:var(--green)} .cells i.rm{background:var(--amber)} .cells i.q{background:transparent;outline:1px solid var(--red)}
 .cells.big{gap:3px} .cells.big i{width:14px;height:14px;border-radius:3px}
-#ring{position:fixed;width:84px;height:84px;margin:-42px 0 0 -42px;border:2px solid #fff;border-radius:50%;pointer-events:none;z-index:4}
-#ring.focus{animation:ringIn .45s ease-out forwards}
-#ring.hold{border-color:var(--amber);border-width:4px;animation:ringPulse .5s infinite alternate}
-#ring.shot{border-color:var(--green);border-width:4px}
-@keyframes ringIn{from{transform:scale(1.5);opacity:.3}to{transform:scale(1);opacity:1}}
-@keyframes ringPulse{to{transform:scale(.85)}}
-video{-webkit-touch-callout:none;-webkit-user-select:none;user-select:none;touch-action:none}
-#ask{position:fixed;left:10px;right:10px;top:calc(env(safe-area-inset-top,0px) + 70px);max-width:560px;margin:0 auto;padding:12px 14px;border-radius:14px;background:#1a1405;border:2px solid var(--amber);z-index:6;display:grid;gap:10px}
-#ask b{font-size:16px;color:var(--amber)} #ask small{display:block;color:var(--muted);font-size:13px;margin-top:2px}
-#ask .ab{display:flex;gap:8px} #ask .ab button{flex:1;border-radius:10px}
-#ask .pri{background:var(--amber);color:#000;border-color:var(--amber);font-weight:700}
-#ver{position:fixed;right:10px;top:calc(env(safe-area-inset-top,0px) + 64px);font-size:11px;color:rgba(255,255,255,.55);text-decoration:none;z-index:3}
+#shoot{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(env(safe-area-inset-bottom,0px) + 112px);width:74px;height:74px;border-radius:50%;padding:0;background:rgba(255,255,255,.18);border:4px solid #fff;box-shadow:0 0 0 3px rgba(0,0,0,.35)}
+#shoot::after{content:'';position:absolute;inset:6px;border-radius:50%;background:#fff}
+#shoot.busy{border-color:var(--amber)} #shoot.busy::after{background:var(--amber);animation:pulse .8s infinite alternate}
+@keyframes pulse{to{opacity:.35}}
 #toast{position:fixed;left:50%;top:calc(env(safe-area-inset-top,0px) + 70px);transform:translateX(-50%);max-width:92%;padding:10px 16px;border-radius:12px;background:#fff;color:#000;font-weight:700;font-size:15px;z-index:6;text-align:center;box-shadow:0 6px 30px rgba(0,0,0,.5)}
 #toast.ok{background:var(--green)}
 .sheetrow .cells{margin-top:6px}
@@ -118,14 +110,13 @@ video{-webkit-touch-callout:none;-webkit-user-select:none;user-select:none;touch
 </div>
 <div id="msg" hidden></div>
 <div id="strip" hidden></div>
-<div id="ring" hidden></div>
+<button id="shoot" hidden aria-label="ถ่ายเก็บข้อมูลหน้านี้"></button>
 <button id="cov" hidden aria-label="ดูความคืบหน้าของใบนำส่ง"></button>
-<a id="ver" href="versions.html"></a>
 <div id="toast" hidden></div>
-<div id="ask" hidden></div>
 <div id="review" hidden><div class="in" id="reviewIn"></div></div>
 <div id="sheet" hidden><div class="in" id="sheetIn"></div></div>
 <input type="file" id="file" accept="image/*" multiple hidden>
+<input type="file" id="snap" accept="image/*" capture="environment" hidden>
 
 <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js"></script>
 <script>
@@ -167,9 +158,7 @@ const DATA=[
 ];
 const BY_CODE={};
 for(const [seq,prov,office,code,area] of DATA) (BY_CODE[code] ||= []).push({seq,prov,office,area});
-const APP_VERSION='v10';   // shown in the app; every version is listed at versions.html
 const $=id=>document.getElementById(id);
-document.addEventListener('DOMContentLoaded',()=>{ const v=$('ver'); if(v) v.textContent=APP_VERSION; });
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const baht=n=>n==null||isNaN(n)?'—':Number(n).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
 const video=$('video'), still=$('still'), ov=$('ov'), ctx=ov.getContext('2d');
@@ -243,19 +232,16 @@ function routeScore(sh,rows){
   const withTrk=Object.entries(sh.rows).map(([k,r])=>({seq:+k,serial:topVote(r.trk)})).filter(x=>x.serial!=null);
   for(const r of rows){
     const row=sh.rows[r.seq];
-    // same ลำดับ already saved: its postcode must match (saved rows are already confirmed, so one vote is enough)
-    if(row&&r.code){ const tc=topVote(row.code); if(tc===r.code) m++; else if(tc) c++; }
-    if(r.serial==null) continue;
-    const own=row&&topVote(row.trk);
-    if(own!=null){ if(Math.abs(r.serial-(+own))<=1) m++; else c++; }
-    else if(withTrk.length){
+    if(row&&r.code){ const tc=topVote(row.code); if(tc===r.code) m++; else if(tc&&row.code[tc]>=2) c++; }
+    if(r.serial!=null&&withTrk.length){
       // item numbers run on with ลำดับ inside one manifest: serial(k) - serial(j) ≈ k - j
       const j=withTrk.reduce((b,x)=>Math.abs(x.seq-r.seq)<Math.abs(b.seq-r.seq)?x:b);
-      if(Math.abs((r.serial-(+j.serial))-(r.seq-j.seq))<=2) m++; else c++;
+      if(j.seq!==r.seq||!row){ if(Math.abs((r.serial-(+j.serial))-(r.seq-j.seq))<=2) m++; else c++; }
     }
   }
   return {m,c};
 }
+// Suggest which manifest a capture belongs to, with the reason. Nothing is switched or created here.
 function suggest(S,rows){
   const A=activeSheet(S), opts=S.sheets.filter(sh=>!sheetEmpty(sh)||sh.id===A.id).map(sh=>({sh,...routeScore(sh,rows)}));
   const best=opts.filter(o=>o.m>=2&&o.m>o.c).sort((a,b)=>b.m-a.m)[0];
@@ -392,9 +378,7 @@ async function readFrame(filter,rot,src){
   const toSrc=drawRotated(el,sw,sh,s,rot,filter);
   const {data}=await worker.recognize(grab);
   const words=(data.words||[]).filter(w=>w.confidence>=35);
-  // typical height of the digits read: tells whether the page is too far away to read
-  const dh=median(words.filter(w=>/\d{2}/.test(w.text)).map(w=>(w.bbox.y1-w.bbox.y0)/s));
-  return {rot,words,toSrc,tr:tableRows(words),pcs:words.filter(w=>asPostcode(w.text)).length,digitH:dh,scale:s};
+  return {words,toSrc,tr:tableRows(words),pcs:words.filter(w=>asPostcode(w.text)).length};
 }
 // Boxes only — the live camera never writes to the session (a blurry or moving frame would spoil the data).
 function showBoxes(f,capRows){
@@ -408,24 +392,18 @@ function showBoxes(f,capRows){
     if(prev){ prev.target=b; prev.t=now; if(row!=null) prev.row=row; } else { dets.push({code,b:{...b},target:b,t:now,row}); }
     if(!seen.has(code)){ seen.add(code); fresh=true; }
   }
-  camFrame++; for(const d of dets) if(d.t===now) d.f=camFrame;
-  dets=dets.filter(d=>mode!=='cam'||camFrame-(d.f??camFrame)<=1);   // gone only after missing 2 readings in a row
+  dets=dets.filter(d=>mode!=='cam'||now-d.t<1500);
   if(fresh||(dets.length&&now-lastBeep>4000)){ if(dets.length){ beep(); lastBeep=now; } }
   // which rows in view are already saved in the manifest being scanned
-  let saved=0, inView=0, conf=0;
+  let saved=0, inView=0;
   if(mode==='cam'&&!capRows){
     const A=activeSheet(cur());
-    live=f.tr.rows.map(r=>{ const k=r.seq+'|'+r.code, st=isSaved(A,r)?'ok':buf.get(k)?.n>0&&f.tr.fitOk?'conf':'todo';
-      inView++; if(st==='ok') saved++; if(st==='conf') conf++; return {b:f.toSrc(r.codeWord.bbox),st,seq:r.seq}; });
+    live=f.tr.fitOk?f.tr.rows.map(r=>{ const row=A.rows[r.seq]; const ok=!!row&&topVote(row.code)===r.code&&(row.manual!=null||topVote(row.price)!=null);
+      inView++; if(ok) saved++; return {b:f.toSrc(r.codeWord.bbox),ok,seq:r.seq}; }):[];
     liveT=now;
   }
   const n=dets.length, st=$('status');
-  st.textContent=mode!=='cam'?(n?`พบพื้นที่ห่างไกล ${n} จุด`:'ไม่พบรหัสพื้นที่ห่างไกล')
-    :asking?'รอคุณยืนยันใบ ↓'
-    :inView?(f.tr.fitOk?`ในภาพ ${inView} แถว · เก็บแล้ว ${saved}${conf?` · กำลังยืนยัน ${conf}`:''}${n?` · ⚑${n}`:''}`:`เห็น ${inView} แถว — ถือนิ่งๆ ให้เห็นเลขลำดับ`)
-    :f.pcs>=3&&f.digitH*f.scale<14?'ตัวเลขเล็กไป — ขยับเข้าใกล้ ให้เห็นแค่ครึ่งหน้า'
-    :f.pcs?'เห็นรหัสแต่ยังจับแถวไม่ได้ — ถือให้ตรง นิ่งๆ'
-    :`ยังอ่านตัวเลขไม่ได้ — ขยับเข้าใกล้ แสงพอ${f.rot?` (ลองหมุน ${f.rot}°)`:''}`;
+  st.textContent=n?`พบพื้นที่ห่างไกล ${n} จุด`:(mode==='cam'?(inView?`ในภาพ ${inView} แถว · เก็บแล้ว ${saved}`:'กำลังสแกน…'):'ไม่พบรหัสพื้นที่ห่างไกล');
   st.className='chip'+(n?' hit':'');
 }
 const okSatang=v=>/\.(00|25|50|75)$/.test(v.toFixed(2));
@@ -450,7 +428,7 @@ function checkCapture(cap){
   if(cap.unsure) return 'ภาพไม่ชัดพอ อ่านเลขลำดับไม่ลงตัว — ไม่บันทึก ถ่ายใหม่ให้ตรงและใกล้ขึ้น';
   return null;
 }
-function saveTo(sh,cap,quiet){
+function saveTo(sh,cap){
   const S=cur();
   for(const r of cap.rows){
     const row=(sh.rows[r.seq] ||= {price:{},code:{},trk:{}}); row.trk ||= {};
@@ -461,65 +439,7 @@ function saveTo(sh,cap,quiet){
   if(cap.total!=null){ inc(sh.totals,cap.total.toFixed(2)); if(cap.lastSeq) inc(sh.last,cap.lastSeq); }
   S.active=sh.id; S.updated=Date.now(); persist();
   const was=sh.done; checkDone(sh); refreshUI();
-  if(!was&&!sh.done) toast(quiet?`+${cap.rows.length} แถว → ใบที่ ${sh.no}`:`บันทึกลงใบที่ ${sh.no} แล้ว`,quiet);
-}
-// is this row already saved in the manifest with the same code and charge?
-function isSaved(sh,r){ const row=sh.rows[r.seq]; if(!row||topVote(row.code)!==r.code) return false;
-  return row.manual!=null||(topVote(row.price)!=null&&(r.price==null||topVote(row.price)===r.price.toFixed(2))); }
-
-/* ---- automatic collection from the live camera ----
-   A row is saved only after the same ลำดับ + postcode + charge is read in 3 separate frames, so a blurry or
-   moving frame cannot put wrong data in. When the rows look like another manifest, the user is asked first. */
-const CONF=3; let buf=new Map(), totBuf={}, frameNo=0, asking=null;
-function collectLive(f){
-  if(!f.tr.fitOk||asking) return;
-  const now=Date.now(); frameNo++;
-  for(const r of f.tr.rows){
-    const k=r.seq+'|'+r.code; const o=buf.get(k)||{seq:r.seq,code:r.code,n:0,price:{},serial:{},fr:-1};
-    if(o.fr!==frameNo){ o.n++; o.fr=frameNo; }
-    if(r.price!=null&&okSatang(r.price)) inc(o.price,r.price.toFixed(2));
-    if(r.serial!=null) inc(o.serial,r.serial);
-    o.t=now; buf.set(k,o);
-  }
-  if(f.tr.total!=null&&okSatang(f.tr.total)){ const k=f.tr.total.toFixed(2), o=totBuf[k]||{n:0,last:{}}; o.n++; if(f.tr.lastSeq) inc(o.last,f.tr.lastSeq); o.t=now; totBuf[k]=o; }
-  for(const [k,o] of buf) if(now-o.t>20000) buf.delete(k);
-  for(const k in totBuf) if(now-totBuf[k].t>20000) delete totBuf[k];
-  // confirmed rows: seen in CONF frames with the same charge at least twice (one per ลำดับ)
-  const best=new Map();
-  for(const o of buf.values()){ const p=topVote(o.price); if(o.n<CONF||p==null||o.price[p]<2||frameNo-o.fr>2) continue;   // only what is in view now
-    const cur_=best.get(o.seq); if(!cur_||o.fr>cur_.fr||(o.fr===cur_.fr&&o.n>cur_.n)) best.set(o.seq,o); }
-  const rows=[...best.values()].map(o=>({seq:o.seq,code:o.code,price:+topVote(o.price),serial:topVote(o.serial)!=null?+topVote(o.serial):null}));
-  const tk=Object.keys(totBuf).find(k=>totBuf[k].n>=CONF);
-  const cap={rows,total:tk?+tk:null,lastSeq:tk&&topVote(totBuf[tk].last)!=null?+topVote(totBuf[tk].last):null};
-  const S=cur(), A=activeSheet(S);
-  // rows whose ลำดับ is already saved in this manifest with a different postcode
-  const clash=rows.filter(r=>{ const tc=A.rows[r.seq]&&topVote(A.rows[r.seq].code); return tc&&tc!==r.code; });
-  const fresh=rows.filter(r=>!isSaved(A,r)&&!clash.includes(r));
-  const newTotal=cap.total!=null&&topVote(A.totals)!==cap.total.toFixed(2);
-  if(!fresh.length&&!newTotal&&clash.length<2) return;
-  let sg=suggest(S,rows);
-  if(clash.length>=2&&sg.target===A.id) sg={...sg,target:'new',why:`ลำดับ ${clash.map(r=>r.seq).join(', ')} มีอยู่แล้วในใบที่ ${A.no} แต่รหัสไม่ตรง — น่าจะเป็นใบใหม่`};
-  if(sg.target===A.id&&!A.done){ if(fresh.length||newTotal){ saveTo(A,{...cap,rows:fresh},true); flashSaved(); } return; }
-  const tgt=S.sheets.find(x=>x.id===sg.target);
-  if(tgt?.done) return;                                    // a finished manifest seen again: nothing to add
-  if(rows.length<3) return;                                // not enough to decide yet
-  ask(sg,cap);
-}
-function flashSaved(){ const c=$('cov'); c.style.boxShadow='0 0 0 3px var(--green)'; setTimeout(()=>c.style.boxShadow='',500); }
-function ask(sg,cap){
-  const S=cur(), A=activeSheet(S), tgt=S.sheets.find(x=>x.id===sg.target);
-  asking={sg,cap};
-  $('ask').innerHTML=`<div><b>${tgt?`นี่คือใบที่ ${tgt.no}?`:'เป็นใบนำส่งใบใหม่?'}</b><small>${esc(sg.why)}</small></div>
-    <div class="ab"><button class="pri" id="askYes">${tgt?`ใช่ ใบที่ ${tgt.no}`:'ใช่ เริ่มใบใหม่'}</button><button id="askNo">ไม่ใช่ ใบที่ ${A.no} เดิม</button></div>`;
-  $('ask').hidden=false; beep();
-  const finish=sh=>{ $('ask').hidden=true; asking=null; buf.clear(); totBuf={};
-    // never overwrite a saved row with a different postcode
-    // and when moving to another manifest, leave behind what already belongs to the current one
-    const rows=cap.rows.filter(r=>{ const tc=sh.rows[r.seq]&&topVote(sh.rows[r.seq].code); return !isSaved(sh,r)&&(!tc||tc===r.code)&&(sh===A||!isSaved(A,r)); });
-    const total=sh!==A&&cap.total!=null&&topVote(A.totals)===cap.total.toFixed(2)?null:cap.total;
-    if(rows.length||total!=null) saveTo(sh,{...cap,rows,total},true); };
-  $('askYes').onclick=()=>finish(tgt||newSheet(S));
-  $('askNo').onclick=()=>finish(A);
+  if(!was&&!sh.done) toast(`บันทึกลงใบที่ ${sh.no} แล้ว`);
 }
 // Show what one capture read and let the user pick the manifest before anything is saved.
 function review(cap){
@@ -560,7 +480,7 @@ async function readCapture(src){
   const frames=[f]; for(const flt of FILTERS.slice(1)) frames.push(await readFrame(flt,rot,src));
   return {frames,cap:consolidate(frames)};
 }
-let lastSkipMsg=0, live=[], liveT=0, camFrame=0;
+let lastSkipMsg=0, live=[], liveT=0;
 
 /* ================= Boxes + labels ================= */
 // false when most readings of that row name a different code (the box came from a one-off misread)
@@ -573,12 +493,11 @@ function draw(ts){
   const now=performance.now();
   const S=cur();
   // green check = row already saved, white dashed = not saved yet (tap the shutter to save this page)
-  if(mode==='cam') for(const L of live){
+  if(mode==='cam'&&now-liveT<1500) for(const L of live){
     const r=toScreen(L.b); r.x-=4; r.y-=3; r.w+=8; r.h+=6;
-    ctx.globalAlpha=1;
-    if(L.st==='ok'){ ctx.strokeStyle='#4ade80'; ctx.lineWidth=2; ctx.setLineDash([]); rr(r.x,r.y,r.w,r.h,4); ctx.stroke();
+    ctx.globalAlpha=Math.max(0,1-(now-liveT)/1500);
+    if(L.ok){ ctx.strokeStyle='#4ade80'; ctx.lineWidth=2; ctx.setLineDash([]); rr(r.x,r.y,r.w,r.h,4); ctx.stroke();
       ctx.fillStyle='rgba(74,222,128,.18)'; ctx.fill(); ctx.fillStyle='#4ade80'; ctx.font='700 13px sans-serif'; ctx.fillText('✓',r.x-14,r.y+r.h-4); }
-    else if(L.st==='conf'){ ctx.strokeStyle='#facc15'; ctx.lineWidth=2; ctx.setLineDash([]); rr(r.x,r.y,r.w,r.h,4); ctx.stroke(); ctx.fillStyle='rgba(250,204,21,.15)'; ctx.fill(); }
     else{ ctx.strokeStyle='rgba(255,255,255,.85)'; ctx.lineWidth=1.5; ctx.setLineDash([4,3]); rr(r.x,r.y,r.w,r.h,4); ctx.stroke(); ctx.setLineDash([]); }
     ctx.globalAlpha=1;
   }
@@ -586,7 +505,7 @@ function draw(ts){
     if(!agrees(d)) continue;
     for(const k of ['x0','y0','x1','y1']) d.b[k]+=(d.target[k]-d.b[k])*.35;
     const r=toScreen(d.b), p=6; r.x-=p; r.y-=p; r.w+=p*2; r.h+=p*2;
-    ctx.globalAlpha=mode==='cam'&&d.f!==camFrame?.5:1;
+    ctx.globalAlpha=mode==='cam'?Math.max(0,1-(now-d.t)/1500):1;
     ctx.shadowColor='#ffb020'; ctx.shadowBlur=12+8*Math.sin(ts/180);
     ctx.strokeStyle='#ffb020'; ctx.lineWidth=3; rr(r.x,r.y,r.w,r.h,6); ctx.stroke();
     ctx.fillStyle='rgba(255,176,32,.15)'; ctx.fill(); ctx.shadowBlur=0;
@@ -629,8 +548,7 @@ function sessionHTML(S,isCur){
     <div class="list">${sheets}</div>
     <div class="acts">${isCur
       ?`<button id="sAdd">+ ใบใหม่</button><button class="pri" id="sNew">จบชุดนี้ เริ่มชุดใหม่</button><button id="sHist">ประวัติ (${sessions.filter(x=>!isEmpty(x)).length})</button><button class="danger" id="sDel">ล้างชุดนี้</button>`
-      :`<button class="pri" id="sResume">สแกนต่อในชุดนี้</button><button id="sHist">กลับไปประวัติ</button><button class="danger" id="sDel">ลบชุดนี้</button>`}</div>
-    <p style="margin-top:16px;font-size:12px;color:var(--muted)">เวอร์ชัน ${APP_VERSION} · <a href="versions.html" style="color:var(--muted)">ดูทุกเวอร์ชัน</a></p>`;
+      :`<button class="pri" id="sResume">สแกนต่อในชุดนี้</button><button id="sHist">กลับไปประวัติ</button><button class="danger" id="sDel">ลบชุดนี้</button>`}</div>`;
 }
 function sheetHTML(S,sh){
   const a=sheetSummary(sh);
@@ -720,12 +638,12 @@ async function getWorker(){
   if(!worker){ worker=await Tesseract.createWorker('eng',1); await worker.setParameters({tessedit_pageseg_mode:'11'}); }
   return worker;
 }
-let busy=false, camTrack=null;   // busy: a capture is being read and the live loop waits
+let busy=false;   // a capture is being read: the live loop waits
 async function startCam(){
   try{
     const stream=await navigator.mediaDevices.getUserMedia({audio:false,video:{facingMode:{ideal:'environment'},width:{ideal:1920},height:{ideal:1080}}});
     video.srcObject=stream; await video.play();
-    const track=camTrack=stream.getVideoTracks()[0], caps=track.getCapabilities?.()||{};
+    const track=stream.getVideoTracks()[0], caps=track.getCapabilities?.()||{};
     if(caps.torch){ const b=$('torch'); b.hidden=false; let on=false;
       b.onclick=async()=>{ on=!on; b.classList.toggle('on',on); try{ await track.applyConstraints({advanced:[{torch:on}]}); }catch(e){} }; }
     if(caps.focusMode?.includes('continuous')) track.applyConstraints({advanced:[{focusMode:'continuous'}]}).catch(()=>{});
@@ -735,63 +653,37 @@ async function startCam(){
     $('msg').innerHTML='เปิดกล้องไม่ได้<br>ต้องเปิดผ่าน https และกดอนุญาตให้ใช้กล้อง<br><button onclick="document.getElementById(\'file\').click()">เลือกรูปแทน</button>';
     return;
   }
-  $('status').textContent=`กำลังโหลดตัวอ่าน… (${APP_VERSION})`;
+  $('status').textContent='กำลังโหลดตัวอ่าน…';
   await getWorker();
-  $('status').textContent='กำลังสแกน… · แตะ = โฟกัส · กดค้าง = ถ่ายเก็บ';
+  $('status').textContent='กำลังสแกน…'; $('shoot').hidden=false;
   // if the page is held sideways, try the other orientations until postcodes show up, then stay there
-  // phone held sideways → the page is sideways in the picture: try those turns first
-  const order=()=>innerWidth>innerHeight?[270,90,0]:[0,90,270];
-  let ROTS=order(), ri=0, empty=0;
-  addEventListener('resize',()=>{ const o=order(); if(o[0]!==ROTS[0]){ ROTS=o; ri=0; empty=0; } });
+  const ROTS=[0,90,270]; let ri=0, empty=0;
   for(let i=0;mode==='cam';i++){
     if(busy){ await new Promise(r=>setTimeout(r,200)); continue; }
     try{
       const f=await readFrame(FILTERS[i%FILTERS.length],ROTS[ri]);
       if(!f) continue;
-      showBoxes(f); collectLive(f);
-      // stay in this orientation while any postcode is read; turn only after 3 readings with nothing
-      if(f.pcs>=1){ empty=0; } else if(++empty>=3){ empty=0; ri=(ri+1)%ROTS.length; }
+      showBoxes(f);
+      if(f.pcs){ empty=0; } else if(++empty>=4){ empty=0; ri=(ri+1)%ROTS.length; }
     }catch(e){ await new Promise(r=>setTimeout(r,300)); }
   }
 }
-// Gestures on the live view: tap = focus there, press and hold = focus, then capture a still and review it.
-async function focusAt(x,y){
-  const t=camTrack; if(!t) return; const caps=t.getCapabilities?.()||{};
+// 📸 opens the phone's own camera: a full-resolution photo reads far better than a video frame
+$('shoot').onclick=()=>{ if(!busy) $('snap').click(); };
+$('snap').onchange=async()=>{
+  const f=$('snap').files[0]; $('snap').value=''; if(!f) return;
+  busy=true; $('shoot').classList.add('busy'); $('status').textContent='กำลังอ่านภาพ…';
   try{
-    if('pointsOfInterest' in caps) await t.applyConstraints({advanced:[{pointsOfInterest:[{x:x/innerWidth,y:y/innerHeight}]}]});
-    if(caps.focusMode?.includes('single-shot')) await t.applyConstraints({advanced:[{focusMode:'single-shot'}]});
-    else if(caps.focusMode?.includes('continuous')) await t.applyConstraints({advanced:[{focusMode:'continuous'}]});
-  }catch(e){}
-}
-function ring(x,y,cls){ const r=$('ring'); r.style.left=x+'px'; r.style.top=y+'px'; r.className=''; void r.offsetWidth; r.className=cls; r.hidden=false; }
-async function grabStill(){
-  // Android Chrome can take a real photo; elsewhere use the current video frame at full size
-  try{ if(window.ImageCapture&&camTrack){ const b=await new ImageCapture(camTrack).takePhoto(); const img=new Image(); img.src=URL.createObjectURL(b); await img.decode(); return {el:img,w:img.naturalWidth,h:img.naturalHeight}; } }catch(e){}
-  const c=document.createElement('canvas'); c.width=video.videoWidth; c.height=video.videoHeight; c.getContext('2d').drawImage(video,0,0);
-  return {el:c,w:c.width,h:c.height};
-}
-let holdT=null, downAt=null;
-video.addEventListener('pointerdown',e=>{
-  if(mode!=='cam'||busy) return;
-  downAt={x:e.clientX,y:e.clientY}; ring(e.clientX,e.clientY,'focus'); focusAt(e.clientX,e.clientY);
-  holdT=setTimeout(async()=>{
-    holdT=null; ring(downAt.x,downAt.y,'hold'); busy=true; navigator.vibrate?.(30);
-    $('status').textContent='กำลังโฟกัส…';
-    await new Promise(r=>setTimeout(r,500));            // let focus settle before taking the still
-    $('status').textContent='กำลังอ่านภาพ…';
-    try{
-      const src=await grabStill(); ring(downAt.x,downAt.y,'shot');
-      const {cap}=await readCapture(src);
-      const bad=checkCapture(cap);
-      if(bad) toast(bad); else await review(cap);
-    }catch(err){ toast('อ่านภาพไม่สำเร็จ ลองใหม่'); }
-    $('ring').hidden=true; busy=false; $('status').textContent='กำลังสแกน…';
-  },550);
-});
-const cancelHold=()=>{ if(holdT){ clearTimeout(holdT); holdT=null; } };
-video.addEventListener('pointerup',cancelHold); video.addEventListener('pointercancel',cancelHold);
-video.addEventListener('pointermove',e=>{ if(holdT&&downAt&&Math.hypot(e.clientX-downAt.x,e.clientY-downAt.y)>20) cancelHold(); });
-video.addEventListener('contextmenu',e=>e.preventDefault());
+    const img=new Image(); img.src=URL.createObjectURL(f); await img.decode();
+    const {cap}=await readCapture({el:img,w:img.naturalWidth,h:img.naturalHeight});
+    const bad=checkCapture(cap);
+    if(bad) toast(bad); else await review(cap);
+  }catch(e){ toast('อ่านภาพไม่สำเร็จ ลองใหม่'); }
+  $('shoot').classList.remove('busy'); busy=false; $('status').textContent='กำลังสแกน…';
+  // iOS may stop the live stream while its camera is open: restart it
+  if(mode==='cam'&&(!video.srcObject||video.srcObject.getVideoTracks().every(t=>t.readyState==='ended'))) location.reload();
+  else video.play().catch(()=>{});
+};
 
 /* ================= Several photos ================= */
 // read them one after another, keep each photo's boxes, tap a thumbnail to view it
@@ -816,7 +708,7 @@ $('pick').onclick=()=>$('file').click();
 $('file').onchange=async()=>{
   const files=[...$('file').files]; $('file').value=''; if(!files.length) return;
   mode='img';
-  video.srcObject?.getTracks().forEach(t=>t.stop()); video.hidden=true; $('msg').hidden=true; $('torch').hidden=true;
+  video.srcObject?.getTracks().forEach(t=>t.stop()); video.hidden=true; $('msg').hidden=true; $('torch').hidden=true; $('shoot').hidden=true;
   still.hidden=false; $('strip').hidden=false; $('cam').hidden=false;
   const start=shots.length;
   shots.push(...files.map(f=>({url:URL.createObjectURL(f),dets:null})));
