@@ -188,7 +188,7 @@ const DATA=[
 ];
 const BY_CODE={};
 for(const [seq,prov,office,code,area] of DATA) (BY_CODE[code] ||= []).push({seq,prov,office,area});
-const APP_VERSION='v14';   // shown in the app; every version is listed at versions.html
+const APP_VERSION='v13';   // shown in the app; every version is listed at versions.html
 const $=id=>document.getElementById(id);
 document.addEventListener('DOMContentLoaded',()=>{ const v=$('ver'); if(v) v.textContent=APP_VERSION; });
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -306,18 +306,6 @@ function refreshUI(){
   c.innerHTML=`<div class="t"><span class="beat" id="beat"></span><b>ใบที่ ${A.no}</b><b class="pct">${known?pct+'%':''}</b><span>${known?`${good}/${a.n}`:`${good}`} แถว · ฿${baht(a.sum)}</span>${a.total!=null?`<span class="m">ในใบ ฿${baht(a.total)}</span>`:'<span class="m">ยังไม่เห็นรวมเงิน</span>'}${state}${frameMs&&mode==='cam'?`<span class="m">~${(frameMs/1000).toFixed(1)} วิ/ภาพ</span>`:''}</div>
     <div class="bar"><i style="width:${pct}%"></i></div>
     ${need?`<div class="fixline">กำลังซ่อม · เหลือ ${need.size?'ลำดับ '+[...need].slice(0,12).join(', ')+(need.size>12?' …':''):'ยอดรวมเงิน'}</div>`:''}${cellsHTML(a,false,need)}`;
-  const snapBtn=$('snapBtn');
-  if(snapBtn){
-    if(need){
-      snapBtn.innerHTML=`<span>📸</span> สแกนซ่อมส่วนที่ขาด (${need.size} จุด)`;
-      snapBtn.style.borderColor='var(--red)';
-      snapBtn.style.boxShadow='0 4px 18px rgba(255,107,107,.45)';
-    } else {
-      snapBtn.innerHTML='<span>📸</span> สแกนใบนำส่ง';
-      snapBtn.style.borderColor='var(--amber)';
-      snapBtn.style.boxShadow='0 4px 18px rgba(255,176,32,.35)';
-    }
-  }
   if(!$('sheet').hidden) renderSheet();
 }
 function checkDone(sh){
@@ -428,8 +416,8 @@ const FILTERS=['grayscale(1) contrast(1.35)','grayscale(1) contrast(2)','none'];
 const canv=[];
 async function readFrame(filter,rot,src,k=0){
   const el=src?.el??(mode==='cam'?video:still), [sw,sh]=src?[src.w,src.h]:srcSize(); if(!sw) return null;
-  // Google Glass AR Fast-Path: 960px for live camera, 1280px for still capture (super fast & sharp)
-  const maxDim = (mode==='cam'&&!src) ? 960 : 1280;
+  // Google Glass AR Fast-Path: 960px is ~3x faster than 1600px, responsive for live postcodes!
+  const maxDim = (mode==='cam'&&!src) ? 960 : 2200;
   const s=Math.min(1,maxDim/Math.max(sw,sh));
   const cv=k?(canv[k] ||= document.createElement('canvas')):grab;
   const toSrc=drawRotated(el,sw,sh,s,rot,filter,cv);
@@ -627,89 +615,34 @@ function review(cap){
     const gaps=[]; for(let i=lo;i<=hi&&hi;i++) if(!by.get(i)) gaps.push(i);
     const noP=cap.rows.filter(r=>r.price==null).map(r=>r.seq);
     const rem=cap.rows.filter(r=>BY_CODE[r.code]);
-    const needFixCount=gaps.length+noP.length;
-
-    const closeReview=(val=null)=>{ $('review').hidden=true; done(val); };
-
     const render=()=>{
       const tgt=pick==='new'?null:S.sheets.find(x=>x.id===pick), dup=tgt?.done;
-      $('reviewIn').innerHTML=`<div class="hd">
-        <button class="back" id="rvBack">‹ กลับไปกล้อง</button>
-        <b style="flex:1;font-size:18px">ตรวจผลก่อนบันทึก</b>
-        <button class="back" id="rvClose" aria-label="ปิด">✕</button>
-      </div>
-      <div class="tot">
-        <div><small>อ่านได้</small><b>${cap.rows.length} แถว</b><small>${hi?`ลำดับ ${lo}–${hi}`:''}</small></div>
-        <div><small>ค่าบริการในภาพนี้</small><b>฿${baht(sum)}</b><small>${cap.total!=null?`รวมเงินในใบ ฿${baht(cap.total)}`:'ภาพนี้ไม่มียอดรวม'}</small></div>
-      </div>
-      ${hi?`<div class="cells big" style="margin-top:10px">${cells}</div><small style="color:var(--muted);font-size:12px">เขียว = อ่านได้ · ส้ม = ห่างไกล · กรอบแดง = ราคาไม่ชัด · เทา = อ่านไม่ได้</small>`:''}
-      ${needFixCount?`<div class="verdict wait" style="margin-top:8px">${gaps.length?`อ่านไม่ได้ ลำดับ ${gaps.join(', ')}`:''}${gaps.length&&noP.length?' · ':''}${noP.length?`ไม่เห็นราคา ลำดับ ${noP.join(', ')}`:''}<small>บันทึกแล้วกดสแกนซ่อมส่วนที่ขาดต่อได้ทันที</small></div>`:''}
-      ${rem.length?`<div class="sec">พื้นที่ห่างไกลในภาพนี้</div><div class="list">${rem.map(r=>{const e=BY_CODE[r.code];return `<div class="item remote"><div><b>ลำดับ ${r.seq} · ${r.code}</b><small>${esc(e[0].office)} · ${esc(e[0].prov)}</small></div><span class="r">฿${baht(r.price)}</span></div>`;}).join('')}</div>`:''}
-      <div class="sec">บันทึกลงใบไหน · แนะนำ: ${esc(sg.why)}</div>
-      <div class="list">${sg.opts.map(o=>`<button class="item pick ${pick===o.sh.id?'sel':''}" data-t="${o.sh.id}"><div><b>ใบที่ ${o.sh.no}${o.sh.done?' · ครบแล้ว':''}</b><small>มีแล้ว ${Object.keys(o.sh.rows).length} แถว · ข้อมูลนี้ตรง ${o.m} · ไม่ตรง ${o.c}</small></div><span class="r">${pick===o.sh.id?'●':'○'}</span></button>`).join('')}
-        <button class="item pick ${pick==='new'?'sel':''}" data-t="new"><div><b>ใบใหม่ (ใบที่ ${S.sheets.reduce((m,x)=>Math.max(m,x.no),0)+1})</b><small>ใบนำส่งอีกใบ ที่ลำดับเริ่มนับใหม่</small></div><span class="r">${pick==='new'?'●':'○'}</span></button>
-      </div>
-      ${dup?'<div class="verdict ok" style="margin-top:10px">ใบนี้สแกนครบแล้ว — ไม่ต้องบันทึกซ้ำ</div>':''}
-      <div class="acts">
-        ${!dup && needFixCount ? `<button class="pri" id="rvSaveAndRepair">📸 บันทึก & สแกนซ่อมส่วนที่ขาด (${needFixCount} จุด)</button>` : ''}
-        <button class="${!needFixCount?'pri':''}" id="rvSave">${dup?'ปิด (ไม่บันทึกซ้ำ)':'บันทึก'}</button>
-        <button id="rvDrop">ทิ้ง ถ่ายใหม่</button>
-      </div>`;
-
+      $('reviewIn').innerHTML=`<div class="hd"><b style="flex:1;font-size:18px">ตรวจผลก่อนบันทึก</b></div>
+        <div class="tot"><div><small>อ่านได้</small><b>${cap.rows.length} แถว</b><small>${hi?`ลำดับ ${lo}–${hi}`:''}</small></div>
+          <div><small>ค่าบริการในภาพนี้</small><b>฿${baht(sum)}</b><small>${cap.total!=null?`รวมเงินในใบ ฿${baht(cap.total)}`:'ภาพนี้ไม่มียอดรวม'}</small></div></div>
+        ${hi?`<div class="cells big" style="margin-top:10px">${cells}</div><small style="color:var(--muted);font-size:12px">เขียว = อ่านได้ · ส้ม = ห่างไกล · กรอบแดง = ราคาไม่ชัด · เทา = อ่านไม่ได้</small>`:''}
+        ${gaps.length||noP.length?`<div class="verdict wait" style="margin-top:8px">${gaps.length?`อ่านไม่ได้ ลำดับ ${gaps.join(', ')}`:''}${gaps.length&&noP.length?' · ':''}${noP.length?`ไม่เห็นราคา ลำดับ ${noP.join(', ')}`:''}<small>บันทึกได้ แล้วค่อยถ่ายเพิ่ม หรือแตะช่องในใบเพื่อพิมพ์เอง</small></div>`:''}
+        ${rem.length?`<div class="sec">พื้นที่ห่างไกลในภาพนี้</div><div class="list">${rem.map(r=>{const e=BY_CODE[r.code];return `<div class="item remote"><div><b>ลำดับ ${r.seq} · ${r.code}</b><small>${esc(e[0].office)} · ${esc(e[0].prov)}</small></div><span class="r">฿${baht(r.price)}</span></div>`;}).join('')}</div>`:''}
+        <div class="sec">บันทึกลงใบไหน · แนะนำ: ${esc(sg.why)}</div>
+        <div class="list">${sg.opts.map(o=>`<button class="item pick ${pick===o.sh.id?'sel':''}" data-t="${o.sh.id}"><div><b>ใบที่ ${o.sh.no}${o.sh.done?' · ครบแล้ว':''}</b><small>มีแล้ว ${Object.keys(o.sh.rows).length} แถว · ข้อมูลนี้ตรง ${o.m} · ไม่ตรง ${o.c}</small></div><span class="r">${pick===o.sh.id?'●':'○'}</span></button>`).join('')}
+          <button class="item pick ${pick==='new'?'sel':''}" data-t="new"><div><b>ใบใหม่ (ใบที่ ${S.sheets.reduce((m,x)=>Math.max(m,x.no),0)+1})</b><small>ใบนำส่งอีกใบ ที่ลำดับเริ่มนับใหม่</small></div><span class="r">${pick==='new'?'●':'○'}</span></button></div>
+        ${dup?'<div class="verdict ok" style="margin-top:10px">ใบนี้สแกนครบแล้ว — ไม่ต้องบันทึกซ้ำ</div>':''}
+        <div class="acts"><button class="pri" id="rvSave">${dup?'ปิด (ไม่บันทึกซ้ำ)':'บันทึก'}</button><button id="rvDrop">ทิ้ง ถ่ายใหม่</button></div>`;
       $('reviewIn').querySelectorAll('.pick').forEach(b=>b.onclick=()=>{ pick=b.dataset.t; render(); });
-      $('rvBack').onclick=()=>closeReview(null);
-      $('rvClose').onclick=()=>closeReview(null);
-
-      const doSave=()=>{
-        if(dup) return null;
-        const sh=pick==='new'?newSheet(S):S.sheets.find(x=>x.id===pick);
-        saveTo(sh,cap);
-        return sh;
-      };
-
-      const btnRep=$('rvSaveAndRepair');
-      if(btnRep){
-        btnRep.onclick=()=>{
-          const sh=doSave();
-          closeReview(sh);
-          if(sh){
-            startRepair(sh,'cam');
-            toast(`บันทึกแล้ว กำลังซ่อมใบที่ ${sh.no} · เล็งแถวที่มีกรอบแดง`, true);
-          }
-        };
-      }
-
-      $('rvSave').onclick=()=>{
-        const sh=doSave();
-        closeReview(sh);
-      };
-
-      $('rvDrop').onclick=()=>{
-        closeReview(null);
-        toast('ไม่ได้บันทึก — กลับไปที่กล้องแล้ว');
-      };
+      $('rvSave').onclick=()=>{ $('review').hidden=true;
+        if(dup) return done(null);
+        const sh=pick==='new'?newSheet(S):S.sheets.find(x=>x.id===pick); saveTo(sh,cap); done(sh); };
+      $('rvDrop').onclick=()=>{ $('review').hidden=true; toast('ไม่ได้บันทึก'); done(null); };
     };
     render(); $('review').hidden=false;
   });
 }
 async function readCapture(src){
-  // 1st pass: fast 1280px with default/known orientation
-  let rot=rotState.ROTS[rotState.ri]||0;
-  let f=await readFrame(FILTERS[0],rot,src,0);
-  if(f.pcs<2){
-    for(const r of [90,270,180]){
-      if(r===rot) continue;
-      const g=await readFrame(FILTERS[0],r,src,0);
-      if(g.pcs>f.pcs){ f=g; rot=r; }
-      if(f.pcs>=3) break;
-    }
-  }
-  let frames=[f];
-  // Parallel 2nd pass ONLY if 1st pass had poor fit or few rows
-  if(f.tr.rows.length<8 || !f.tr.fitOk){
-    const f2=await readFrame(FILTERS[1],rot,src,1%workers.length);
-    if(f2) frames.push(f2);
-  }
+  // which way up is the page: the orientation that shows the most postcodes
+  let rot=0, f=await readFrame(FILTERS[0],0,src);
+  if(f.pcs<3){ for(const r of [90,270,180]){ const g=await readFrame(FILTERS[0],r,src); if(g.pcs>f.pcs){ f=g; rot=r; } if(f.pcs>=3) break; } }
+  // the other two readings run at the same time on the two readers
+  const frames=[f,...await Promise.all(FILTERS.slice(1).map((flt,i)=>readFrame(flt,rot,src,i%workers.length)))];
   return {frames,cap:consolidate(frames)};
 }
 let lastSkipMsg=0, live=[], liveT=0, camFrame=0, frameMs=0;
@@ -842,7 +775,7 @@ function sessionHTML(S,isCur){
   const rem=[...ss.remote.map(r=>remoteItem(r,multi)),
     ...ss.loose.map(c=>{ const e=BY_CODE[c]; return `<div class="item remote"><div><b>${c}</b><small>${esc(e[0].office)} · ${esc(e[0].prov)} · ไม่ทราบลำดับ</small></div></div>`; })].join('');
   const allDone=ss.list.length&&ss.done===ss.list.length;
-  return `<div class="hd"><input id="sName" value="${esc(S.name)}" aria-label="ชื่อชุด"><button class="pri back" id="sToCam" style="padding:6px 14px;font-size:13px">📷 กลับไปกล้อง</button><button id="sClose" aria-label="ปิด">✕</button></div>
+  return `<div class="hd"><input id="sName" value="${esc(S.name)}" aria-label="ชื่อชุด"><button id="sClose" aria-label="ปิด">✕</button></div>
     ${isCur?'':`<div class="verdict wait" style="margin:0 0 12px">ชุดจากประวัติ · ${new Date(S.created).toLocaleString('th-TH')}</div>`}
     <div class="tot"><div><small>ค่าบริการรวมทุกใบ</small><b>฿${baht(ss.sum)}</b><small>${ss.list.length} ใบ · ${ss.rows} แถว</small></div>
       <div><small>ใบที่ครบแล้ว</small><b>${ss.done}/${ss.list.length}</b><small>ครบ = ทุกแถวมีราคา และยอดตรงกับ "รวมเงิน"</small></div></div>
@@ -873,13 +806,13 @@ function sheetHTML(S,sh){
     <small>${need.length?`ลำดับ ${need.slice(0,40).join(', ')}${need.length>40?' …':''}`:'สแกนหน้าสุดท้ายที่มี "รวมเงิน"'}</small>
     <div class="ab"><button class="pri" id="fixCam">📷 สแกนซ่อมด้วยกล้อง</button><button id="fixImg">🖼 ถ่ายรูปซ่อม</button></div>
     ${fixing?'<button id="fixStop" class="lnk">เลิกซ่อม</button>':'<small>หรือแตะช่องด้านล่างเพื่อพิมพ์ราคาเอง</small>'}</div>`:'';
-  return `<div class="hd"><button class="back" id="sBackS">‹ ชุด</button><b style="flex:1;font-size:18px">ใบที่ ${sh.no}</b><button class="pri back" id="sToCamS" style="padding:6px 14px;font-size:13px">📷 กลับไปกล้อง</button><button id="sClose" aria-label="ปิด">✕</button></div>
+  return `<div class="hd"><button class="back" id="sBackS">‹ ชุด</button><b style="flex:1;font-size:18px">ใบที่ ${sh.no}</b><button id="sClose" aria-label="ปิด">✕</button></div>
     <div class="tot"><div><small>รวมค่าบริการที่สแกนได้</small><b>฿${baht(a.sum)}</b><small>${a.rows.length}${a.n?`/${a.n}`:''} แถว</small></div>
       <div><small>ยอด "รวมเงิน" ในใบ${sh.manualTotal!=null?' (พิมพ์เอง)':''}</small><input id="sTotal" inputmode="decimal" placeholder="—" value="${a.total!=null?baht(a.total):''}" aria-label="ยอดรวมเงินในใบ"><small>แก้ได้ถ้าอ่านผิด</small></div></div>
     ${v}${unsureNote}${fix}
     ${a.remote.length?`<div class="sec">พื้นที่ห่างไกล / เกาะ (${a.remote.length})</div><div class="list">${a.remote.map(r=>remoteItem({...r,no:sh.no},false)).join('')}</div>`:''}
     ${a.n?`<div class="sec">ค่าบริการแต่ละลำดับ (แตะเพื่อแก้)</div><div class="grid">${grid}</div>`:''}
-    <div class="acts"><button class="pri" id="sUse">📷 สแกนใบนี้ต่อ</button><button class="danger" id="sDelSheet">ลบใบนี้</button></div>`;
+    <div class="acts"><button class="pri" id="sUse">${sh.id===S.active?'กำลังสแกนใบนี้':'สแกนใบนี้ต่อ'}</button><button class="danger" id="sDelSheet">ลบใบนี้</button></div>`;
 }
 function historyHTML(){
   const list=sessions.filter(s=>!isEmpty(s)||s.id===curId);
@@ -901,8 +834,7 @@ function renderSheet(){
     el.innerHTML=sheetHTML(S,sh);
     $('sBackS').onclick=()=>{ view={k:'sess'}; renderSheet(); };
     $('sTotal').onchange=e=>{ const v=parseFloat(e.target.value.replace(/,/g,'')); sh.manualTotal=isNaN(v)?null:v; sh.done=false; checkDone(sh); persist(); refreshUI(); };
-    $('sUse').onclick=()=>{ S.active=sh.id; persist(); $('sheet').hidden=true; refreshUI(); };
-    if($('sToCamS')) $('sToCamS').onclick=()=>{ $('sheet').hidden=true; };
+    $('sUse').onclick=()=>{ S.active=sh.id; persist(); refreshUI(); };
     if($('fixCam')){ $('fixCam').onclick=()=>startRepair(sh,'cam'); $('fixImg').onclick=()=>startRepair(sh,'img'); }
     if($('fixStop')) $('fixStop').onclick=()=>{ repair=null; saveRepair(); refreshUI(); };
     el.querySelectorAll('.gcell').forEach(c=>c.onclick=()=>{
@@ -921,7 +853,6 @@ function renderSheet(){
     el.innerHTML=sessionHTML(S,isCur);
     $('sName').onchange=e=>{ S.name=e.target.value.trim()||S.name; persist(); };
     $('sHist').onclick=()=>{ view={k:'hist'}; renderSheet(); };
-    if($('sToCam')) $('sToCam').onclick=()=>{ $('sheet').hidden=true; };
     if(isCur) el.querySelectorAll('[data-sheet]').forEach(b=>b.onclick=()=>{ view={k:'sheet',id:b.dataset.sheet}; renderSheet(); });
     const del=$('sDel');
     del.onclick=()=>{ if(armed!=='del'){ armed='del'; del.textContent='แตะอีกครั้งเพื่อยืนยัน'; return; }
