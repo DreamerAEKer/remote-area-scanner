@@ -384,7 +384,7 @@ function drawRotated(src,sw,sh,s,rot,filter){
 const FILTERS=['grayscale(1) contrast(1.35)','grayscale(1) contrast(2)','none'];
 async function readFrame(filter,rot,src){
   const el=src?.el??(mode==='cam'?video:still), [sw,sh]=src?[src.w,src.h]:srcSize(); if(!sw) return null;
-  const s=Math.min(1,(mode==='cam'&&!src?2000:2400)/Math.max(sw,sh));   // never enlarge: upscaled photos read worse
+  const s=Math.min(1,(mode==='cam'&&!src?1600:2400)/Math.max(sw,sh));   // never enlarge: upscaled photos read worse
   const toSrc=drawRotated(el,sw,sh,s,rot,filter);
   const {data}=await worker.recognize(grab);
   const words=(data.words||[]).filter(w=>w.confidence>=35);
@@ -402,7 +402,8 @@ function showBoxes(f,capRows){
     if(prev){ prev.target=b; prev.t=now; if(row!=null) prev.row=row; } else { dets.push({code,b:{...b},target:b,t:now,row}); }
     if(!seen.has(code)){ seen.add(code); fresh=true; }
   }
-  dets=dets.filter(d=>mode!=='cam'||now-d.t<1500);
+  camFrame++; for(const d of dets) if(d.t===now) d.f=camFrame;
+  dets=dets.filter(d=>mode!=='cam'||camFrame-(d.f??camFrame)<=1);   // gone only after missing 2 readings in a row
   if(fresh||(dets.length&&now-lastBeep>4000)){ if(dets.length){ beep(); lastBeep=now; } }
   // which rows in view are already saved in the manifest being scanned
   let saved=0, inView=0, conf=0;
@@ -551,7 +552,7 @@ async function readCapture(src){
   const frames=[f]; for(const flt of FILTERS.slice(1)) frames.push(await readFrame(flt,rot,src));
   return {frames,cap:consolidate(frames)};
 }
-let lastSkipMsg=0, live=[], liveT=0;
+let lastSkipMsg=0, live=[], liveT=0, camFrame=0;
 
 /* ================= Boxes + labels ================= */
 // false when most readings of that row name a different code (the box came from a one-off misread)
@@ -564,9 +565,9 @@ function draw(ts){
   const now=performance.now();
   const S=cur();
   // green check = row already saved, white dashed = not saved yet (tap the shutter to save this page)
-  if(mode==='cam'&&now-liveT<1500) for(const L of live){
+  if(mode==='cam') for(const L of live){
     const r=toScreen(L.b); r.x-=4; r.y-=3; r.w+=8; r.h+=6;
-    ctx.globalAlpha=Math.max(0,1-(now-liveT)/1500);
+    ctx.globalAlpha=1;
     if(L.st==='ok'){ ctx.strokeStyle='#4ade80'; ctx.lineWidth=2; ctx.setLineDash([]); rr(r.x,r.y,r.w,r.h,4); ctx.stroke();
       ctx.fillStyle='rgba(74,222,128,.18)'; ctx.fill(); ctx.fillStyle='#4ade80'; ctx.font='700 13px sans-serif'; ctx.fillText('✓',r.x-14,r.y+r.h-4); }
     else if(L.st==='conf'){ ctx.strokeStyle='#facc15'; ctx.lineWidth=2; ctx.setLineDash([]); rr(r.x,r.y,r.w,r.h,4); ctx.stroke(); ctx.fillStyle='rgba(250,204,21,.15)'; ctx.fill(); }
@@ -577,7 +578,7 @@ function draw(ts){
     if(!agrees(d)) continue;
     for(const k of ['x0','y0','x1','y1']) d.b[k]+=(d.target[k]-d.b[k])*.35;
     const r=toScreen(d.b), p=6; r.x-=p; r.y-=p; r.w+=p*2; r.h+=p*2;
-    ctx.globalAlpha=mode==='cam'?Math.max(0,1-(now-d.t)/1500):1;
+    ctx.globalAlpha=mode==='cam'&&d.f!==camFrame?.5:1;
     ctx.shadowColor='#ffb020'; ctx.shadowBlur=12+8*Math.sin(ts/180);
     ctx.strokeStyle='#ffb020'; ctx.lineWidth=3; rr(r.x,r.y,r.w,r.h,6); ctx.stroke();
     ctx.fillStyle='rgba(255,176,32,.15)'; ctx.fill(); ctx.shadowBlur=0;
