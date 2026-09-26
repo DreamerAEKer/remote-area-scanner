@@ -97,23 +97,6 @@ video{-webkit-touch-callout:none;-webkit-user-select:none;user-select:none;touch
 #ask .ab{display:flex;gap:8px} #ask .ab button{flex:1;border-radius:10px}
 #ask .pri{background:var(--amber);color:#000;border-color:var(--amber);font-weight:700}
 #ver{position:fixed;right:10px;top:calc(env(safe-area-inset-top,0px) + 64px);font-size:11px;color:rgba(255,255,255,.55);text-decoration:none;z-index:3}
-#bar,#cov,#review,#sheet,#ask,#toast,#strip{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
-input{-webkit-user-select:text;user-select:text}
-#cov .pct{color:var(--green);font-size:15px}
-#cov .bar{height:5px;border-radius:3px;background:rgba(255,255,255,.12);margin-top:6px;overflow:hidden}
-#cov .bar i{display:block;height:100%;background:var(--green);transition:width .4s}
-.beat{width:9px;height:9px;border-radius:50%;background:rgba(255,255,255,.25);align-self:center;flex:none}
-.beat.on{animation:beat .9s ease-out}
-@keyframes beat{0%{background:#5fe3ff;box-shadow:0 0 8px #5fe3ff}100%{background:rgba(255,255,255,.25);box-shadow:none}}
-.fixline{margin-top:6px;font-size:12px;color:var(--red);font-weight:700}
-.cells i.nd{outline:2px solid var(--red);animation:nd 1s infinite alternate}
-@keyframes nd{to{opacity:.35}}
-.fix{margin-top:10px;padding:12px;border-radius:12px;border:1px solid rgba(255,107,107,.5);background:rgba(255,107,107,.08);display:grid;gap:8px}
-.fix b{color:var(--red)} .fix small{color:var(--muted);font-size:13px}
-.fix .ab{display:flex;gap:8px;flex-wrap:wrap} .fix .ab button{flex:1;min-width:140px;border-radius:10px}
-.fix .pri{background:var(--amber);color:#000;border-color:var(--amber);font-weight:700}
-.lnk{background:none;border:0;color:var(--muted);text-decoration:underline;padding:0;justify-self:start}
-@media (prefers-reduced-motion:reduce){.beat.on,.cells i.nd{animation:none}}
 #toast{position:fixed;left:50%;top:calc(env(safe-area-inset-top,0px) + 70px);transform:translateX(-50%);max-width:92%;padding:10px 16px;border-radius:12px;background:#fff;color:#000;font-weight:700;font-size:15px;z-index:6;text-align:center;box-shadow:0 6px 30px rgba(0,0,0,.5)}
 #toast.ok{background:var(--green)}
 .sheetrow .cells{margin-top:6px}
@@ -184,7 +167,7 @@ const DATA=[
 ];
 const BY_CODE={};
 for(const [seq,prov,office,code,area] of DATA) (BY_CODE[code] ||= []).push({seq,prov,office,area});
-const APP_VERSION='v12';   // shown in the app; every version is listed at versions.html
+const APP_VERSION='v11';   // shown in the app; every version is listed at versions.html
 const $=id=>document.getElementById(id);
 document.addEventListener('DOMContentLoaded',()=>{ const v=$('ver'); if(v) v.textContent=APP_VERSION; });
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -287,8 +270,8 @@ function suggest(S,rows){
 /* ---- UI: progress bar over the camera + toast ---- */
 let toastT=null;
 function toast(msg,ok){ const t=$('toast'); t.textContent=msg; t.className=ok?'ok':''; t.hidden=false; clearTimeout(toastT); toastT=setTimeout(()=>t.hidden=true,2600); }
-const cellsHTML=(a,big,need)=>{ if(!a.n) return ''; const by=new Map(a.rows.map(r=>[r.seq,r])); let h='';
-  for(let i=1;i<=a.n;i++){ const r=by.get(i); h+=`<i class="${!r?'':r.price==null||r.unsure?'q':BY_CODE[r.code]?'rm':'ok'}${need&&need.has(i)?' nd':''}" title="${i}"></i>`; }
+const cellsHTML=(a,big)=>{ if(!a.n) return ''; const by=new Map(a.rows.map(r=>[r.seq,r])); let h='';
+  for(let i=1;i<=a.n;i++){ const r=by.get(i); h+=`<i class="${!r?'':r.price==null||r.unsure?'q':BY_CODE[r.code]?'rm':'ok'}" title="${i}"></i>`; }
   return `<div class="cells${big?' big':''}">${h}</div>`; };
 function refreshUI(){
   const S=cur(), A=activeSheet(S), a=sheetSummary(A), ss=sessionSummary(S), b=$('sessBtn');
@@ -296,12 +279,7 @@ function refreshUI(){
   b.className=ss.list.length&&ss.done===ss.list.length?'ok':'';
   const c=$('cov'); c.hidden=false; c.classList.toggle('up',mode==='img'); c.classList.toggle('done',A.done);
   const state=A.done?'<b style="color:var(--green)">✓ ครบ ยอดตรง</b>':a.total!=null&&a.diff!==0&&!a.missing.length&&!a.noPrice.length?`<b style="color:var(--red)">✗ ต่าง ฿${baht(Math.abs(a.diff)/100)}</b>`:'';
-  // progress: rows with a clear charge out of all rows (the count is only final once "รวมเงิน" is seen)
-  const good=a.rows.filter(r=>r.price!=null&&!r.unsure).length, known=a.total!=null&&a.n, pct=known?Math.round(100*good/a.n):0;
-  const need=repairNeed(A);
-  c.innerHTML=`<div class="t"><span class="beat" id="beat"></span><b>ใบที่ ${A.no}</b><b class="pct">${known?pct+'%':''}</b><span>${known?`${good}/${a.n}`:`${good}`} แถว · ฿${baht(a.sum)}</span>${a.total!=null?`<span class="m">ในใบ ฿${baht(a.total)}</span>`:'<span class="m">ยังไม่เห็นรวมเงิน</span>'}${state}${frameMs&&mode==='cam'?`<span class="m">~${(frameMs/1000).toFixed(1)} วิ/ภาพ</span>`:''}</div>
-    <div class="bar"><i style="width:${pct}%"></i></div>
-    ${need?`<div class="fixline">กำลังซ่อม · เหลือ ${need.size?'ลำดับ '+[...need].slice(0,12).join(', ')+(need.size>12?' …':''):'ยอดรวมเงิน'}</div>`:''}${cellsHTML(a,false,need)}`;
+  c.innerHTML=`<div class="t"><b>ใบที่ ${A.no}</b><span>${a.rows.length}${a.n?`/${a.n}`:''} แถว · ฿${baht(a.sum)}</span>${a.total!=null?`<span class="m">ในใบ ฿${baht(a.total)}</span>`:'<span class="m">ยังไม่เห็นยอดรวม</span>'}${state}</div>${cellsHTML(a)}`;
   if(!$('sheet').hidden) renderSheet();
 }
 function checkDone(sh){
@@ -394,30 +372,25 @@ function toScreen(b){
 }
 
 // Draw the source turned by rot (0/90/180/270° clockwise) so the table reads upright, and map boxes back.
-function drawRotated(src,sw,sh,s,rot,filter,cv=grab){
-  const cx=cv===grab?gctx:(cv._cx ||= cv.getContext('2d',{willReadFrequently:true}));
+function drawRotated(src,sw,sh,s,rot,filter){
   const w=Math.round(sw*s), h=Math.round(sh*s), side=rot%180!==0;
-  cv.width=side?h:w; cv.height=side?w:h;
-  cx.setTransform(1,0,0,1,0,0); cx.filter=filter;
-  if(rot===90){ cx.translate(h,0); cx.rotate(Math.PI/2); }
-  else if(rot===270){ cx.translate(0,w); cx.rotate(-Math.PI/2); }
-  else if(rot===180){ cx.translate(w,h); cx.rotate(Math.PI); }
-  cx.drawImage(src,0,0,w,h); cx.setTransform(1,0,0,1,0,0);
+  grab.width=side?h:w; grab.height=side?w:h;
+  gctx.setTransform(1,0,0,1,0,0); gctx.filter=filter;
+  if(rot===90){ gctx.translate(h,0); gctx.rotate(Math.PI/2); }
+  else if(rot===270){ gctx.translate(0,w); gctx.rotate(-Math.PI/2); }
+  else if(rot===180){ gctx.translate(w,h); gctx.rotate(Math.PI); }
+  gctx.drawImage(src,0,0,w,h); gctx.setTransform(1,0,0,1,0,0);
   const back=(x,y)=>rot===90?[y,h-x]:rot===270?[w-y,x]:rot===180?[w-x,h-y]:[x,y];
   return b=>{ const p=[back(b.x0,b.y0),back(b.x1,b.y1)]; return {x0:Math.min(p[0][0],p[1][0])/s,y0:Math.min(p[0][1],p[1][1])/s,x1:Math.max(p[0][0],p[1][0])/s,y1:Math.max(p[0][1],p[1][1])/s}; };
 }
 
 // each preprocessing catches different digits, so passes rotate through them
 const FILTERS=['grayscale(1) contrast(1.35)','grayscale(1) contrast(2)','none'];
-const canv=[];
-async function readFrame(filter,rot,src,k=0){
+async function readFrame(filter,rot,src){
   const el=src?.el??(mode==='cam'?video:still), [sw,sh]=src?[src.w,src.h]:srcSize(); if(!sw) return null;
   const s=Math.min(1,(mode==='cam'&&!src?1600:2400)/Math.max(sw,sh));   // never enlarge: upscaled photos read worse
-  const cv=k?(canv[k] ||= document.createElement('canvas')):grab;
-  const toSrc=drawRotated(el,sw,sh,s,rot,filter,cv);
-  const t0=performance.now();
-  const {data}=await (workers[k]||worker).recognize(cv);
-  frameMs=frameMs?frameMs*.7+(performance.now()-t0)*.3:performance.now()-t0; beat();
+  const toSrc=drawRotated(el,sw,sh,s,rot,filter);
+  const {data}=await worker.recognize(grab);
   const words=(data.words||[]).filter(w=>w.confidence>=35);
   // typical height of the digits read: tells whether the page is too far away to read
   const dh=median(words.filter(w=>/\d{2}/.test(w.text)).map(w=>(w.bbox.y1-w.bbox.y0)/s));
@@ -442,10 +415,8 @@ function showBoxes(f,capRows){
   let saved=0, inView=0, conf=0;
   if(mode==='cam'&&!capRows){
     const A=activeSheet(cur());
-    const need=repairNeed(A);
-    live=f.tr.rows.map(r=>{ const k=r.seq+'|'+r.code, cnt=buf.get(k)?.n||0;
-      const st=need&&need.has(r.seq)?(cnt>0&&f.tr.fitOk?'conf':'need'):isSaved(A,r)?'ok':cnt>0&&f.tr.fitOk?'conf':'todo';
-      inView++; if(st==='ok') saved++; if(st==='conf') conf++; return {b:f.toSrc(r.codeWord.bbox),st,seq:r.seq,cnt:Math.min(cnt,CONF)}; });
+    live=f.tr.rows.map(r=>{ const k=r.seq+'|'+r.code, st=isSaved(A,r)?'ok':buf.get(k)?.n>0&&f.tr.fitOk?'conf':'todo';
+      inView++; if(st==='ok') saved++; if(st==='conf') conf++; return {b:f.toSrc(r.codeWord.bbox),st,seq:r.seq}; });
     liveT=now;
   }
   const n=dets.length, st=$('status');
@@ -480,10 +451,9 @@ function checkCapture(cap){
   return null;
 }
 function saveTo(sh,cap,quiet){
-  const S=cur(), need=repairNeed(sh);
+  const S=cur();
   for(const r of cap.rows){
     const row=(sh.rows[r.seq] ||= {price:{},code:{},trk:{}}); row.trk ||= {};
-    if(need&&need.has(r.seq)&&r.price!=null&&okSatang(r.price)) row.price={};   // repair: a clear new charge replaces the unclear one
     if(r.price!=null) inc(row.price,r.price.toFixed(2),okSatang(r.price)?1:0.3);
     inc(row.code,r.code);
     if(r.serial!=null) inc(row.trk,r.serial);
@@ -491,8 +461,7 @@ function saveTo(sh,cap,quiet){
   if(cap.total!=null){ inc(sh.totals,cap.total.toFixed(2)); if(cap.lastSeq) inc(sh.last,cap.lastSeq); }
   S.active=sh.id; S.updated=Date.now(); persist();
   const was=sh.done; checkDone(sh); refreshUI();
-  if(!was&&!sh.done&&cap.rows.length) toast(quiet?`+${cap.rows.length} แถว → ใบที่ ${sh.no}`:`บันทึกลงใบที่ ${sh.no} แล้ว`,quiet);
-  endRepairIfDone(sh);
+  if(!was&&!sh.done) toast(quiet?`+${cap.rows.length} แถว → ใบที่ ${sh.no}`:`บันทึกลงใบที่ ${sh.no} แล้ว`,quiet);
 }
 // is this row already saved in the manifest with the same code and charge?
 function isSaved(sh,r){ const row=sh.rows[r.seq]; if(!row||topVote(row.code)!==r.code) return false;
@@ -536,8 +505,7 @@ function collectLive(f){
   const sa=routeScore(A,rows);
   const clash=rows.filter(r=>contradicts(A,r));
   const byCode=clash.filter(r=>contradicts(A,r)==='code').length, bySerial=clash.length-byCode;
-  const need=repairNeed(A);
-  const fresh=rows.filter(r=>(!isSaved(A,r)||(need&&need.has(r.seq)))&&!clash.includes(r));
+  const fresh=rows.filter(r=>!isSaved(A,r)&&!clash.includes(r));
   const newTotal=cap.total!=null&&topVote(A.totals)!==cap.total.toFixed(2);
   const different=!sheetEmpty(A)&&(sa.c>=2||clash.length>=2);
   if(!different){
@@ -550,26 +518,6 @@ function collectLive(f){
   if(other){ if(other.sh.done) return; ask({target:other.sh.id,why:`ตรงกับใบที่ ${other.sh.no} ${other.m} จุด`},cap); return; }
   const why=[bySerial?`เลขที่สิ่งของไม่ตรง ${bySerial} แถว`:'',byCode?`รหัสไปรษณีย์ไม่ตรง ${byCode} แถว`:'',!clash.length&&sa.c?`เลขที่สิ่งของไม่ต่อเนื่อง ${sa.c} แถว`:''].filter(Boolean).join(' · ');
   ask({target:'new',why:`ไม่ตรงกับใบที่ ${A.no}: ${why}`},cap);
-}
-// Repair: the user picked a manifest to fix; its missing / unreadable rows are wanted, and a clear new reading
-// of those rows replaces the old one.
-let repair=null; try{ repair=JSON.parse(localStorage.getItem('ras-repair')); }catch(e){}
-const saveRepair=()=>{ try{ localStorage.setItem('ras-repair',JSON.stringify(repair)); }catch(e){} };
-function needOf(sh){ const a=sheetSummary(sh);
-  return new Set([...a.missing,...a.noPrice.map(r=>r.seq),...a.unsure.map(r=>r.seq)].sort((x,y)=>x-y)); }
-function repairNeed(sh){ return repair&&repair.sess===curId&&repair.sheet===sh.id?needOf(sh):null; }
-function endRepairIfDone(sh){
-  if(!repair||repair.sheet!==sh.id) return;
-  const need=needOf(sh), a=sheetSummary(sh);
-  if(!need.size&&a.total!=null){ repair=null; saveRepair(); toast(`✓ ซ่อมใบที่ ${sh.no} เรียบร้อย${sh.done?' — ยอดตรงแล้ว':''}`,true); }
-}
-function startRepair(sh,how){
-  const S=cur(); S.active=sh.id; persist();
-  repair={sess:curId,sheet:sh.id}; saveRepair();
-  $('sheet').hidden=true; refreshUI();
-  if(how==='img') $('file').click();
-  else if(mode!=='cam') location.reload();              // back to the live camera; the repair is remembered
-  else toast(`ส่องไปที่แถวที่ต้องซ่อม (กรอบแดง)`);
 }
 function flashSaved(){ const c=$('cov'); c.style.boxShadow='0 0 0 3px var(--green)'; setTimeout(()=>c.style.boxShadow='',500); }
 function ask(sg,cap){
@@ -590,10 +538,7 @@ function ask(sg,cap){
 // Show what one capture read and let the user pick the manifest before anything is saved.
 function review(cap){
   return new Promise(done=>{
-    const S=cur(); let sg=suggest(S,cap.rows);
-    const rs=repair&&repair.sess===curId&&S.sheets.find(x=>x.id===repair.sheet);
-    if(rs&&routeScore(rs,cap.rows).c<2) sg={...sg,target:rs.id,why:`กำลังซ่อมใบที่ ${rs.no}`};
-    let pick=sg.target;
+    const S=cur(), sg=suggest(S,cap.rows); let pick=sg.target;
     const seqs=cap.rows.map(r=>r.seq), lo=seqs.length?Math.min(...seqs):0, hi=seqs.length?Math.max(...seqs):0;
     const by=cap.map, sum=cap.rows.reduce((t,r)=>t+Math.round((r.price||0)*100),0)/100;
     let cells=''; for(let i=lo;i<=hi&&hi;i++){ const r=by.get(i); cells+=`<i class="${!r?'':r.price==null||!okSatang(r.price)?'q':BY_CODE[r.code]?'rm':'ok'}" title="${i}"></i>`; }
@@ -626,12 +571,10 @@ async function readCapture(src){
   // which way up is the page: the orientation that shows the most postcodes
   let rot=0, f=await readFrame(FILTERS[0],0,src);
   if(f.pcs<3){ for(const r of [90,270,180]){ const g=await readFrame(FILTERS[0],r,src); if(g.pcs>f.pcs){ f=g; rot=r; } if(f.pcs>=3) break; } }
-  // the other two readings run at the same time on the two readers
-  const frames=[f,...await Promise.all(FILTERS.slice(1).map((flt,i)=>readFrame(flt,rot,src,i%workers.length)))];
+  const frames=[f]; for(const flt of FILTERS.slice(1)) frames.push(await readFrame(flt,rot,src));
   return {frames,cap:consolidate(frames)};
 }
-let lastSkipMsg=0, live=[], liveT=0, camFrame=0, frameMs=0;
-function beat(){ const b=$('beat'); if(!b) return; b.classList.remove('on'); void b.offsetWidth; b.classList.add('on'); }
+let lastSkipMsg=0, live=[], liveT=0, camFrame=0;
 
 /* ================= Boxes + labels ================= */
 // false when most readings of that row name a different code (the box came from a one-off misread)
@@ -649,10 +592,7 @@ function draw(ts){
     ctx.globalAlpha=1;
     if(L.st==='ok'){ ctx.strokeStyle='#4ade80'; ctx.lineWidth=2; ctx.setLineDash([]); rr(r.x,r.y,r.w,r.h,4); ctx.stroke();
       ctx.fillStyle='rgba(74,222,128,.18)'; ctx.fill(); ctx.fillStyle='#4ade80'; ctx.font='700 13px sans-serif'; ctx.fillText('✓',r.x-14,r.y+r.h-4); }
-    else if(L.st==='conf'){ ctx.strokeStyle='#facc15'; ctx.lineWidth=2; ctx.setLineDash([]); rr(r.x,r.y,r.w,r.h,4); ctx.stroke(); ctx.fillStyle='rgba(250,204,21,.15)'; ctx.fill();
-      ctx.fillStyle='#facc15'; ctx.font='700 12px sans-serif'; ctx.fillText(`${L.cnt}/${CONF}`,r.x+r.w+4,r.y+r.h-3); }
-    else if(L.st==='need'){ ctx.strokeStyle='#ff6b6b'; ctx.lineWidth=2.5; ctx.setLineDash([5,3]); rr(r.x,r.y,r.w,r.h,4); ctx.stroke(); ctx.setLineDash([]);
-      ctx.fillStyle='#ff6b6b'; ctx.font='700 12px sans-serif'; ctx.fillText('ซ่อม',r.x+r.w+4,r.y+r.h-3); }
+    else if(L.st==='conf'){ ctx.strokeStyle='#facc15'; ctx.lineWidth=2; ctx.setLineDash([]); rr(r.x,r.y,r.w,r.h,4); ctx.stroke(); ctx.fillStyle='rgba(250,204,21,.15)'; ctx.fill(); }
     else{ ctx.strokeStyle='rgba(255,255,255,.85)'; ctx.lineWidth=1.5; ctx.setLineDash([4,3]); rr(r.x,r.y,r.w,r.h,4); ctx.stroke(); ctx.setLineDash([]); }
     ctx.globalAlpha=1;
   }
@@ -718,15 +658,10 @@ function sheetHTML(S,sh){
   for(let i=1;i<=a.n;i++){ const r=by.get(i);
     grid+=`<button class="gcell ${r&&BY_CODE[r.code]?'remote':''}" data-seq="${i}" style="${!r||r.price==null||r.unsure?'outline:1px dashed var(--red);':''}"><i>${i}</i>${r?.price!=null?baht(r.price)+(r.unsure?'?':'')+(r.manual?'✎':''):'—'}</button>`; }
   const unsureNote=a.unsure.length?`<div class="verdict wait" style="margin-top:8px">อ่านไม่ชัด ตรวจด้วยตา: ${a.unsure.map(r=>`ลำดับ ${r.seq} (ถือเป็น ${baht(r.price)})`).join(', ')}</div>`:'';
-  const need=[...needOf(sh)], fixing=repair&&repair.sess===curId&&repair.sheet===sh.id;
-  const fix=!sh.done&&a.rows.length&&(need.length||a.total==null)?`<div class="fix"><b>${fixing?'กำลังซ่อมใบนี้':'ต้องซ่อม'}: ${need.length?`${need.length} แถว`:''}${need.length&&a.total==null?' + ':''}${a.total==null?'ยอดรวมเงิน':''}</b>
-    <small>${need.length?`ลำดับ ${need.slice(0,40).join(', ')}${need.length>40?' …':''}`:'สแกนหน้าสุดท้ายที่มี "รวมเงิน"'}</small>
-    <div class="ab"><button class="pri" id="fixCam">📷 สแกนซ่อมด้วยกล้อง</button><button id="fixImg">🖼 ถ่ายรูปซ่อม</button></div>
-    ${fixing?'<button id="fixStop" class="lnk">เลิกซ่อม</button>':'<small>หรือแตะช่องด้านล่างเพื่อพิมพ์ราคาเอง</small>'}</div>`:'';
   return `<div class="hd"><button class="back" id="sBackS">‹ ชุด</button><b style="flex:1;font-size:18px">ใบที่ ${sh.no}</b><button id="sClose" aria-label="ปิด">✕</button></div>
     <div class="tot"><div><small>รวมค่าบริการที่สแกนได้</small><b>฿${baht(a.sum)}</b><small>${a.rows.length}${a.n?`/${a.n}`:''} แถว</small></div>
       <div><small>ยอด "รวมเงิน" ในใบ${sh.manualTotal!=null?' (พิมพ์เอง)':''}</small><input id="sTotal" inputmode="decimal" placeholder="—" value="${a.total!=null?baht(a.total):''}" aria-label="ยอดรวมเงินในใบ"><small>แก้ได้ถ้าอ่านผิด</small></div></div>
-    ${v}${unsureNote}${fix}
+    ${v}${unsureNote}
     ${a.remote.length?`<div class="sec">พื้นที่ห่างไกล / เกาะ (${a.remote.length})</div><div class="list">${a.remote.map(r=>remoteItem({...r,no:sh.no},false)).join('')}</div>`:''}
     ${a.n?`<div class="sec">ค่าบริการแต่ละลำดับ (แตะเพื่อแก้)</div><div class="grid">${grid}</div>`:''}
     <div class="acts"><button class="pri" id="sUse">${sh.id===S.active?'กำลังสแกนใบนี้':'สแกนใบนี้ต่อ'}</button><button class="danger" id="sDelSheet">ลบใบนี้</button></div>`;
@@ -752,15 +687,13 @@ function renderSheet(){
     $('sBackS').onclick=()=>{ view={k:'sess'}; renderSheet(); };
     $('sTotal').onchange=e=>{ const v=parseFloat(e.target.value.replace(/,/g,'')); sh.manualTotal=isNaN(v)?null:v; sh.done=false; checkDone(sh); persist(); refreshUI(); };
     $('sUse').onclick=()=>{ S.active=sh.id; persist(); refreshUI(); };
-    if($('fixCam')){ $('fixCam').onclick=()=>startRepair(sh,'cam'); $('fixImg').onclick=()=>startRepair(sh,'img'); }
-    if($('fixStop')) $('fixStop').onclick=()=>{ repair=null; saveRepair(); refreshUI(); };
     el.querySelectorAll('.gcell').forEach(c=>c.onclick=()=>{
       const k=c.dataset.seq, row=sh.rows[k];
       const v=prompt(`ค่าบริการ ลำดับ ${k} (บาท)\nเว้นว่าง = ลบค่านี้แล้วให้สแกนใหม่`, row?.manual??(row?topVote(row.price)??'':''));
       if(v===null) return;
       if(v.trim()===''){ delete sh.rows[k]; }
       else{ const n=parseFloat(v.replace(/,/g,'')); if(isNaN(n)) return; (sh.rows[k] ||= {price:{},code:{},trk:{}}).manual=n; }
-      sh.done=false; checkDone(sh); persist(); refreshUI(); endRepairIfDone(sh); });
+      sh.done=false; checkDone(sh); persist(); refreshUI(); });
     const d=$('sDelSheet'); d.onclick=()=>{ if(armed!=='del'){ armed='del'; d.textContent='แตะอีกครั้งเพื่อยืนยัน'; return; }
       S.sheets=S.sheets.filter(x=>x.id!==sh.id); if(!S.sheets.length) newSheet(S); if(S.active===sh.id) S.active=S.sheets.at(-1).id;
       persist(); view={k:'sess'}; refreshUI(); renderSheet(); };
@@ -797,14 +730,8 @@ function beep(){
 }
 
 /* ================= Camera ================= */
-// two readers: the live camera reads two frames at once, a photo reads its passes in parallel
-let workers=[];
 async function getWorker(){
-  if(!workers.length){
-    const mk=async()=>{ const w=await Tesseract.createWorker('eng',1); await w.setParameters({tessedit_pageseg_mode:'11'}); return w; };
-    workers=[await mk()]; worker=workers[0];
-    mk().then(w=>workers.push(w)).catch(()=>{});          // the second one loads in the background
-  }
+  if(!worker){ worker=await Tesseract.createWorker('eng',1); await worker.setParameters({tessedit_pageseg_mode:'11'}); }
   return worker;
 }
 let busy=false, camTrack=null;   // busy: a capture is being read and the live loop waits
@@ -825,22 +752,19 @@ async function startCam(){
   $('status').textContent=`กำลังโหลดตัวอ่าน… (${APP_VERSION})`;
   await getWorker();
   $('status').textContent='กำลังสแกน… · แตะ = โฟกัส · กดค้าง = ถ่ายเก็บ';
-  liveLoop(0); setTimeout(()=>liveLoop(1),1200);
-}
-// phone held sideways → the page is sideways in the picture: try those turns first
-const rotOrder=()=>innerWidth>innerHeight?[270,90,0]:[0,90,270];
-const rotState={ROTS:rotOrder(),ri:0,empty:0};
-addEventListener('resize',()=>{ const o=rotOrder(); if(o[0]!==rotState.ROTS[0]){ rotState.ROTS=o; rotState.ri=0; rotState.empty=0; } });
-async function liveLoop(k){
-  while(k>=workers.length&&mode==='cam') await new Promise(r=>setTimeout(r,500));   // wait for the second reader
+  // if the page is held sideways, try the other orientations until postcodes show up, then stay there
+  // phone held sideways → the page is sideways in the picture: try those turns first
+  const order=()=>innerWidth>innerHeight?[270,90,0]:[0,90,270];
+  let ROTS=order(), ri=0, empty=0;
+  addEventListener('resize',()=>{ const o=order(); if(o[0]!==ROTS[0]){ ROTS=o; ri=0; empty=0; } });
   for(let i=0;mode==='cam';i++){
     if(busy){ await new Promise(r=>setTimeout(r,200)); continue; }
     try{
-      const f=await readFrame(FILTERS[(i*2+k)%FILTERS.length],rotState.ROTS[rotState.ri],null,k);
+      const f=await readFrame(FILTERS[i%FILTERS.length],ROTS[ri]);
       if(!f) continue;
-      collectLive(f); showBoxes(f);
+      showBoxes(f); collectLive(f);
       // stay in this orientation while any postcode is read; turn only after 3 readings with nothing
-      if(f.pcs>=1){ rotState.empty=0; } else if(++rotState.empty>=3){ rotState.empty=0; rotState.ri=(rotState.ri+1)%rotState.ROTS.length; }
+      if(f.pcs>=1){ empty=0; } else if(++empty>=3){ empty=0; ri=(ri+1)%ROTS.length; }
     }catch(e){ await new Promise(r=>setTimeout(r,300)); }
   }
 }
