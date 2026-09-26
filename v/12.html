@@ -118,9 +118,6 @@ input{-webkit-user-select:text;user-select:text}
 #toast.ok{background:var(--green)}
 .sheetrow .cells{margin-top:6px}
 .back{border-radius:10px;padding:6px 10px;font-size:13px}
-#shutterBar{position:fixed;left:0;right:0;bottom:calc(env(safe-area-inset-bottom,0px) + 78px);display:flex;justify-content:center;pointer-events:none;z-index:4}
-.shutter-btn{pointer-events:auto;background:rgba(17,22,27,.85);border:1.5px solid var(--amber);color:#fff;border-radius:99px;padding:9px 22px;font-size:14px;font-weight:700;display:flex;align-items:center;gap:8px;box-shadow:0 4px 18px rgba(255,176,32,.35),0 0 10px rgba(0,0,0,.8);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);cursor:pointer;transition:transform .12s,background .12s}
-.shutter-btn:active{transform:scale(.95);background:var(--amber);color:#000}
 
 </style>
 </head>
@@ -139,7 +136,6 @@ input{-webkit-user-select:text;user-select:text}
 <div id="msg" hidden></div>
 <div id="strip" hidden></div>
 <div id="ring" hidden></div>
-<div id="shutterBar"><button id="snapBtn" class="shutter-btn" aria-label="สแกนใบนำส่ง"><span>📸</span> สแกนใบนำส่ง</button></div>
 <button id="cov" hidden aria-label="ดูความคืบหน้าของใบนำส่ง"></button>
 <a id="ver" href="versions.html"></a>
 <div id="toast" hidden></div>
@@ -188,7 +184,7 @@ const DATA=[
 ];
 const BY_CODE={};
 for(const [seq,prov,office,code,area] of DATA) (BY_CODE[code] ||= []).push({seq,prov,office,area});
-const APP_VERSION='v13';   // shown in the app; every version is listed at versions.html
+const APP_VERSION='v12';   // shown in the app; every version is listed at versions.html
 const $=id=>document.getElementById(id);
 document.addEventListener('DOMContentLoaded',()=>{ const v=$('ver'); if(v) v.textContent=APP_VERSION; });
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -416,9 +412,7 @@ const FILTERS=['grayscale(1) contrast(1.35)','grayscale(1) contrast(2)','none'];
 const canv=[];
 async function readFrame(filter,rot,src,k=0){
   const el=src?.el??(mode==='cam'?video:still), [sw,sh]=src?[src.w,src.h]:srcSize(); if(!sw) return null;
-  // Google Glass AR Fast-Path: 960px is ~3x faster than 1600px, responsive for live postcodes!
-  const maxDim = (mode==='cam'&&!src) ? 960 : 2200;
-  const s=Math.min(1,maxDim/Math.max(sw,sh));
+  const s=Math.min(1,(mode==='cam'&&!src?1600:2400)/Math.max(sw,sh));   // never enlarge: upscaled photos read worse
   const cv=k?(canv[k] ||= document.createElement('canvas')):grab;
   const toSrc=drawRotated(el,sw,sh,s,rot,filter,cv);
   const t0=performance.now();
@@ -429,30 +423,21 @@ async function readFrame(filter,rot,src,k=0){
   const dh=median(words.filter(w=>/\d{2}/.test(w.text)).map(w=>(w.bbox.y1-w.bbox.y0)/s));
   return {rot,words,toSrc,tr:tableRows(words),pcs:words.filter(w=>asPostcode(w.text)).length,digitH:dh,scale:s};
 }
-// Boxes & Holograms — Google Glass AR detects all postcodes, highlights remote areas in gold
+// Boxes only — the live camera never writes to the session (a blurry or moving frame would spoil the data).
 function showBoxes(f,capRows){
-  const now=performance.now(); let freshRemote=false, freshNormal=false;
+  const now=performance.now(); let fresh=false;
   const rowOf=new Map(f.tr.rows.filter(r=>r.codeWord).map(r=>[r.codeWord,r]));
   for(const w of f.words){
-    const code=asPostcode(w.text); if(!code) continue;
-    const isRemote=!!BY_CODE[code];
+    const code=asPostcode(w.text); if(!code||!BY_CODE[code]) continue;   // only remote-area codes get a box
     const b=f.toSrc(w.bbox), r=rowOf.get(w), row=r?.seq??null;
-    if(capRows&&row!=null&&capRows.get(row)?.code&&capRows.get(row).code!==code) continue;
-    const prev=dets.find(d=>d.code===code&&Math.hypot((d.b.x0+d.b.x1)/2-(b.x0+b.x1)/2, (d.b.y0+d.b.y1)/2-(b.y0+b.y1)/2)<180);
-    if(prev){ prev.target=b; prev.t=now; if(row!=null) prev.row=row; prev.seenCount=(prev.seenCount||1)+1; }
-    else { dets.push({code,isRemote,b:{...b},target:b,t:now,row,firstSeen:now,seenCount:1});
-      if(isRemote){ if(!seen.has(code)){ seen.add(code); freshRemote=true; } }
-      else freshNormal=true; }
+    if(capRows&&row!=null&&capRows.get(row)?.code&&capRows.get(row).code!==code) continue;   // one-off misread in this photo
+    const prev=dets.find(d=>d.code===code&&Math.abs(d.b.x0-b.x0)<200&&Math.abs(d.b.y0-b.y0)<200);
+    if(prev){ prev.target=b; prev.t=now; if(row!=null) prev.row=row; } else { dets.push({code,b:{...b},target:b,t:now,row}); }
+    if(!seen.has(code)){ seen.add(code); fresh=true; }
   }
   camFrame++; for(const d of dets) if(d.t===now) d.f=camFrame;
-  // Keep holograms persistent for 1.6s so AR doesn't flicker
-  dets=dets.filter(d=>mode!=='cam'||(now-d.t<1600));
-  const remoteDets=dets.filter(d=>d.isRemote);
-  if(freshRemote||(remoteDets.length&&now-lastBeep>3500)){
-    if(remoteDets.length){ glassChime('remote'); lastBeep=now; }
-  } else if(freshNormal&&now-lastBeep>1200){
-    glassChime('normal');
-  }
+  dets=dets.filter(d=>mode!=='cam'||camFrame-(d.f??camFrame)<=1);   // gone only after missing 2 readings in a row
+  if(fresh||(dets.length&&now-lastBeep>4000)){ if(dets.length){ beep(); lastBeep=now; } }
   // which rows in view are already saved in the manifest being scanned
   let saved=0, inView=0, conf=0;
   if(mode==='cam'&&!capRows){
@@ -463,13 +448,13 @@ function showBoxes(f,capRows){
       inView++; if(st==='ok') saved++; if(st==='conf') conf++; return {b:f.toSrc(r.codeWord.bbox),st,seq:r.seq,cnt:Math.min(cnt,CONF)}; });
     liveT=now;
   }
-  const n=remoteDets.length, st=$('status');
-  st.textContent=mode!=='cam'?(n?`👓 AR: พบพื้นที่ห่างไกล ${n} จุด`:'👓 AR: ไม่พบรหัสพื้นที่ห่างไกล')
+  const n=dets.length, st=$('status');
+  st.textContent=mode!=='cam'?(n?`พบพื้นที่ห่างไกล ${n} จุด`:'ไม่พบรหัสพื้นที่ห่างไกล')
     :asking?'รอคุณยืนยันใบ ↓'
-    :n?`⚑ ตรวจพบพื้นที่ห่างไกล ${n} จุด! (กด 📸 ตรวจทั้งใบ)`
-    :inView?(f.tr.fitOk?`👓 AR ล็อก ${inView} แถว (กด 📸 สแกนใบ)`:`👓 AR ส่องรหัส ปณ. / เลขสิ่งของ`)
-    :f.pcs?`👓 AR ล็อกรหัสได้ ${f.pcs} จุด`
-    :`👓 AR Glass พร้อมสแกน · เล็งไปที่รหัส ปณ.`;
+    :inView?(f.tr.fitOk?`ในภาพ ${inView} แถว · เก็บแล้ว ${saved}${conf?` · กำลังยืนยัน ${conf}`:''}${n?` · ⚑${n}`:''}`:`เห็น ${inView} แถว — ถือนิ่งๆ ให้เห็นเลขลำดับ`)
+    :f.pcs>=3&&f.digitH*f.scale<14?'ตัวเลขเล็กไป — ขยับเข้าใกล้ ให้เห็นแค่ครึ่งหน้า'
+    :f.pcs?'เห็นรหัสแต่ยังจับแถวไม่ได้ — ถือให้ตรง นิ่งๆ'
+    :`ยังอ่านตัวเลขไม่ได้ — ขยับเข้าใกล้ แสงพอ${f.rot?` (ลองหมุน ${f.rot}°)`:''}`;
   st.className='chip'+(n?' hit':'');
 }
 const okSatang=v=>/\.(00|25|50|75)$/.test(v.toFixed(2));
@@ -652,46 +637,13 @@ function beat(){ const b=$('beat'); if(!b) return; b.classList.remove('on'); voi
 // false when most readings of that row name a different code (the box came from a one-off misread)
 function agrees(d){ if(d.row==null) return true; const row=cur().sheets.find(x=>x.no===d.no)?.rows[d.row]; const tc=row&&topVote(row.code); return !tc||tc===d.code; }
 function rr(x,y,w,h,r){ctx.beginPath();ctx.roundRect?ctx.roundRect(x,y,w,h,r):ctx.rect(x,y,w,h);}
-function drawBrackets(x,y,w,h,len,color,lw=2,glow=false){
-  ctx.save();
-  ctx.strokeStyle=color; ctx.lineWidth=lw;
-  if(glow){ ctx.shadowColor=color; ctx.shadowBlur=12; }
-  ctx.beginPath();
-  ctx.moveTo(x,y+len); ctx.lineTo(x,y); ctx.lineTo(x+len,y);
-  ctx.moveTo(x+w-len,y); ctx.lineTo(x+w,y); ctx.lineTo(x+w,y+len);
-  ctx.moveTo(x,y+h-len); ctx.lineTo(x,y+h); ctx.lineTo(x+len,y+h);
-  ctx.moveTo(x+w-len,y+h); ctx.lineTo(x+w,y+h); ctx.lineTo(x+w,y+h-len);
-  ctx.stroke(); ctx.restore();
-}
 function draw(ts){
   const dpr=devicePixelRatio||1, W=ov.clientWidth, H=ov.clientHeight;
   if(ov.width!==W*dpr||ov.height!==H*dpr){ov.width=W*dpr;ov.height=H*dpr;}
   ctx.setTransform(dpr,0,0,dpr,0,0); ctx.clearRect(0,0,W,H);
   const now=performance.now();
   const S=cur();
-
-  // Google Glass AR Viewfinder Center Reticle
-  if(mode==='cam'){
-    const cx=W/2, cy=H/2-30, rw=Math.min(W*0.75, 340), rh=rw*0.55;
-    drawBrackets(cx-rw/2, cy-rh/2, rw, rh, 18, 'rgba(255,255,255,0.22)', 1.5);
-    ctx.save();
-    ctx.strokeStyle='rgba(255,255,255,0.25)'; ctx.lineWidth=1;
-    ctx.beginPath();
-    ctx.moveTo(cx-12, cy); ctx.lineTo(cx+12, cy);
-    ctx.moveTo(cx, cy-12); ctx.lineTo(cx, cy+12);
-    ctx.stroke();
-    // Sweeping laser scanline
-    const scanY = cy - rh/2 + ((ts*0.14) % rh);
-    const grad = ctx.createLinearGradient(cx-rw/2, scanY, cx+rw/2, scanY);
-    grad.addColorStop(0, 'rgba(255,176,32,0)');
-    grad.addColorStop(0.5, 'rgba(255,176,32,0.45)');
-    grad.addColorStop(1, 'rgba(255,176,32,0)');
-    ctx.strokeStyle=grad; ctx.lineWidth=2;
-    ctx.beginPath(); ctx.moveTo(cx-rw/2, scanY); ctx.lineTo(cx+rw/2, scanY); ctx.stroke();
-    ctx.restore();
-  }
-
-  // Row markers when scanning manifest
+  // green check = row already saved, white dashed = not saved yet (tap the shutter to save this page)
   if(mode==='cam') for(const L of live){
     const r=toScreen(L.b); r.x-=4; r.y-=3; r.w+=8; r.h+=6;
     ctx.globalAlpha=1;
@@ -701,63 +653,28 @@ function draw(ts){
       ctx.fillStyle='#facc15'; ctx.font='700 12px sans-serif'; ctx.fillText(`${L.cnt}/${CONF}`,r.x+r.w+4,r.y+r.h-3); }
     else if(L.st==='need'){ ctx.strokeStyle='#ff6b6b'; ctx.lineWidth=2.5; ctx.setLineDash([5,3]); rr(r.x,r.y,r.w,r.h,4); ctx.stroke(); ctx.setLineDash([]);
       ctx.fillStyle='#ff6b6b'; ctx.font='700 12px sans-serif'; ctx.fillText('ซ่อม',r.x+r.w+4,r.y+r.h-3); }
-    else{ ctx.strokeStyle='rgba(255,255,255,.65)'; ctx.lineWidth=1.2; ctx.setLineDash([4,3]); rr(r.x,r.y,r.w,r.h,4); ctx.stroke(); ctx.setLineDash([]); }
+    else{ ctx.strokeStyle='rgba(255,255,255,.85)'; ctx.lineWidth=1.5; ctx.setLineDash([4,3]); rr(r.x,r.y,r.w,r.h,4); ctx.stroke(); ctx.setLineDash([]); }
     ctx.globalAlpha=1;
   }
-
-  // AR Holograms for Detected Postcodes
   for(const d of dets){
     if(!agrees(d)) continue;
-    for(const k of ['x0','y0','x1','y1']) d.b[k]+=(d.target[k]-d.b[k])*.4;
+    for(const k of ['x0','y0','x1','y1']) d.b[k]+=(d.target[k]-d.b[k])*.35;
     const r=toScreen(d.b), p=6; r.x-=p; r.y-=p; r.w+=p*2; r.h+=p*2;
-    const age=now-d.t;
-    const alpha=Math.min(1, Math.max(0, age<900?1:1-(age-900)/700));
-    ctx.globalAlpha=alpha;
-
-    if(d.isRemote){
-      // --- Hologram: Remote Area (Neon Amber / Gold Glow) ---
-      drawBrackets(r.x, r.y, r.w, r.h, 12, '#ffb020', 2.5, true);
-      ctx.fillStyle='rgba(255,176,32,.18)'; rr(r.x,r.y,r.w,r.h,4); ctx.fill();
-
-      const list=BY_CODE[d.code], e=list[0];
-      const t1=(d.row!=null?`${S.sheets.length>1&&d.no?`ใบ ${d.no} · `:''}ลำดับ ${d.row} · `:'')+`${d.code} · ${e.office}`;
-      const t2=`${e.prov}${list.some(x=>x.area)?' · ⚠ '+list.map(x=>x.area.replace('เฉพาะ','')).join('/'):''} [พื้นที่ห่างไกล]`;
-
-      ctx.font='700 13px "IBM Plex Sans Thai",sans-serif';
-      let lw=ctx.measureText(t1).width;
-      ctx.font='500 11px "IBM Plex Sans Thai",sans-serif';
-      lw=Math.max(lw, ctx.measureText(t2).width) + 20;
-      const lh=40;
-
-      // Hologram Leader Line
-      const startX=r.x+r.w, startY=r.y+r.h/2;
-      let targetX=startX+22, targetY=startY-22;
-      if(targetX+lw > W-8) targetX=r.x-lw-14;
-      if(targetY < 50) targetY=r.y+r.h+8;
-
-      ctx.save();
-      ctx.strokeStyle='rgba(255,176,32,.75)'; ctx.lineWidth=1.5; ctx.setLineDash([3,2]);
-      ctx.beginPath(); ctx.moveTo(startX, startY); ctx.lineTo(targetX>startX?targetX:targetX+lw, targetY+lh/2); ctx.stroke();
-      ctx.restore();
-
-      // Floating Frosted Glass Badge
-      ctx.fillStyle='rgba(15,20,26,.88)'; ctx.strokeStyle='#ffb020'; ctx.lineWidth=1.5;
-      rr(targetX, targetY, lw, lh, 8); ctx.fill(); ctx.stroke();
-      ctx.fillStyle='#ffb020'; ctx.font='700 13px "IBM Plex Sans Thai",sans-serif'; ctx.fillText(t1, targetX+10, targetY+16);
-      ctx.fillStyle='#ffe2a8'; ctx.font='500 11px "IBM Plex Sans Thai",sans-serif'; ctx.fillText(t2, targetX+10, targetY+32);
-
-    } else {
-      // --- Hologram: Normal Postcode (Cyber Cyan) ---
-      drawBrackets(r.x, r.y, r.w, r.h, 8, '#5fe3ff', 1.5, false);
-      ctx.fillStyle='rgba(95,227,255,.08)'; rr(r.x,r.y,r.w,r.h,3); ctx.fill();
-
-      const tag=`${d.code} · ปกติ`;
-      ctx.font='600 11px "IBM Plex Sans Thai",sans-serif';
-      const tw=ctx.measureText(tag).width+12;
-      let tx=r.x, ty=r.y-16; if(ty<40) ty=r.y+r.h+14;
-      ctx.fillStyle='rgba(0,0,0,.75)'; rr(tx, ty-10, tw, 16, 4); ctx.fill();
-      ctx.fillStyle='#5fe3ff'; ctx.fillText(tag, tx+6, ty+2);
-    }
+    ctx.globalAlpha=mode==='cam'&&d.f!==camFrame?.5:1;
+    ctx.shadowColor='#ffb020'; ctx.shadowBlur=12+8*Math.sin(ts/180);
+    ctx.strokeStyle='#ffb020'; ctx.lineWidth=3; rr(r.x,r.y,r.w,r.h,6); ctx.stroke();
+    ctx.fillStyle='rgba(255,176,32,.15)'; ctx.fill(); ctx.shadowBlur=0;
+    const list=BY_CODE[d.code], e=list[0];
+    const t1=(d.row!=null?`${S.sheets.length>1&&d.no?`ใบ ${d.no} · `:''}ลำดับ ${d.row} · `:'')+`${e.office} · ${e.prov}`;
+    const t2=list.some(x=>x.area)?'⚠ '+list.map(x=>x.area.replace('เฉพาะ','')).join(' / '):'';
+    ctx.font='700 14px "IBM Plex Sans Thai",sans-serif';
+    let lw=ctx.measureText(t1).width;
+    if(t2){ ctx.font='500 12px "IBM Plex Sans Thai",sans-serif'; lw=Math.max(lw,ctx.measureText(t2).width); }
+    lw+=16; const lh=t2?42:26;
+    const lx=Math.min(Math.max(4,r.x),W-lw-4); let ly=r.y-lh-4; if(ly<60) ly=r.y+r.h+4;
+    ctx.fillStyle='rgba(0,0,0,.8)'; rr(lx,ly,lw,lh,6); ctx.fill();
+    ctx.fillStyle='#ffb020'; ctx.font='700 14px "IBM Plex Sans Thai",sans-serif'; ctx.fillText(t1,lx+8,ly+18);
+    if(t2){ ctx.fillStyle='#ffe2a8'; ctx.font='500 12px "IBM Plex Sans Thai",sans-serif'; ctx.fillText(t2,lx+8,ly+35); }
     ctx.globalAlpha=1;
   }
   requestAnimationFrame(draw);
@@ -869,59 +786,28 @@ $('sessBtn').onclick=()=>{ view={k:'sess'}; $('sheet').hidden=false; renderSheet
 $('cov').onclick=()=>{ view={k:'sheet',id:activeSheet(cur()).id}; $('sheet').hidden=false; renderSheet(); };
 $('sheet').onclick=e=>{ if(e.target.id==='sheet') $('sheet').hidden=true; };
 
-/* ================= Google Glass Audio Chimes & Haptics ================= */
+/* ================= Beep + vibrate on a find ================= */
 let actx=null;
-addEventListener('pointerdown',()=>{ try{ actx ||= new (window.AudioContext||window.webkitAudioContext)(); actx.resume(); }catch(e){} },{once:true});
-function glassChime(type='remote'){
-  try{
-    actx ||= new (window.AudioContext||window.webkitAudioContext)();
-    if(actx.state==='suspended') actx.resume();
-    const now=actx.currentTime;
-    if(type==='remote'){
-      // High-tech lock-on chime for Remote Area
-      const o=actx.createOscillator(), g=actx.createGain();
-      o.type='triangle';
-      o.frequency.setValueAtTime(1174, now);
-      o.frequency.exponentialRampToValueAtTime(1760, now+0.08);
-      g.gain.setValueAtTime(0.2, now);
-      g.gain.exponentialRampToValueAtTime(0.001, now+0.25);
-      o.connect(g); g.connect(actx.destination);
-      o.start(now); o.stop(now+0.26);
-      try{ navigator.vibrate?.([40, 50, 40]); }catch(e){}
-    } else {
-      // Soft high-tech subtle lock blip for Normal Postcode
-      const o=actx.createOscillator(), g=actx.createGain();
-      o.type='sine';
-      o.frequency.setValueAtTime(700, now);
-      o.frequency.exponentialRampToValueAtTime(880, now+0.05);
-      g.gain.setValueAtTime(0.05, now);
-      g.gain.exponentialRampToValueAtTime(0.001, now+0.07);
-      o.connect(g); g.connect(actx.destination);
-      o.start(now); o.stop(now+0.08);
-      try{ navigator.vibrate?.(15); }catch(e){}
-    }
-  }catch(e){}
+addEventListener('pointerdown',()=>{ try{ actx ||= new AudioContext(); actx.resume(); }catch(e){} },{once:true});
+function beep(){
+  try{ actx ||= new AudioContext(); const o=actx.createOscillator(), g=actx.createGain(); o.connect(g); g.connect(actx.destination);
+    o.frequency.value=1100; g.gain.setValueAtTime(.12,actx.currentTime); g.gain.exponentialRampToValueAtTime(.001,actx.currentTime+.2);
+    o.start(); o.stop(actx.currentTime+.21); }catch(e){}
+  try{ navigator.vibrate?.(80); }catch(e){}
 }
-const beep=()=>glassChime('remote');
 
-/* ================= Camera & Tesseract Engine ================= */
+/* ================= Camera ================= */
+// two readers: the live camera reads two frames at once, a photo reads its passes in parallel
 let workers=[];
 async function getWorker(){
   if(!workers.length){
-    const mk=async()=>{
-      const w=await Tesseract.createWorker('eng',1);
-      await w.setParameters({
-        tessedit_char_whitelist:'0123456789.,-ABCDEFGHIJKLMNOPQRSTUVWXYZ/ ',
-        tessedit_pageseg_mode:'11'
-      });
-      return w;
-    };
+    const mk=async()=>{ const w=await Tesseract.createWorker('eng',1); await w.setParameters({tessedit_pageseg_mode:'11'}); return w; };
     workers=[await mk()]; worker=workers[0];
-    mk().then(w=>workers.push(w)).catch(()=>{});
+    mk().then(w=>workers.push(w)).catch(()=>{});          // the second one loads in the background
   }
   return worker;
 }
-let busy=false, camTrack=null;
+let busy=false, camTrack=null;   // busy: a capture is being read and the live loop waits
 async function startCam(){
   try{
     const stream=await navigator.mediaDevices.getUserMedia({audio:false,video:{facingMode:{ideal:'environment'},width:{ideal:1920},height:{ideal:1080}}});
@@ -936,27 +822,29 @@ async function startCam(){
     $('msg').innerHTML='เปิดกล้องไม่ได้<br>ต้องเปิดผ่าน https และกดอนุญาตให้ใช้กล้อง<br><button onclick="document.getElementById(\'file\').click()">เลือกรูปแทน</button>';
     return;
   }
-  $('status').textContent=`กำลังโหลด AR Glass Engine… (${APP_VERSION})`;
+  $('status').textContent=`กำลังโหลดตัวอ่าน… (${APP_VERSION})`;
   await getWorker();
-  $('status').textContent='👓 AR Glass พร้อมสแกน · เล็งไปที่รหัส ปณ.';
-  liveLoop(0);
+  $('status').textContent='กำลังสแกน… · แตะ = โฟกัส · กดค้าง = ถ่ายเก็บ';
+  liveLoop(0); setTimeout(()=>liveLoop(1),1200);
 }
 // phone held sideways → the page is sideways in the picture: try those turns first
 const rotOrder=()=>innerWidth>innerHeight?[270,90,0]:[0,90,270];
 const rotState={ROTS:rotOrder(),ri:0,empty:0};
 addEventListener('resize',()=>{ const o=rotOrder(); if(o[0]!==rotState.ROTS[0]){ rotState.ROTS=o; rotState.ri=0; rotState.empty=0; } });
-async function liveLoop(k=0){
+async function liveLoop(k){
+  while(k>=workers.length&&mode==='cam') await new Promise(r=>setTimeout(r,500));   // wait for the second reader
   for(let i=0;mode==='cam';i++){
-    if(busy){ await new Promise(r=>setTimeout(r,150)); continue; }
+    if(busy){ await new Promise(r=>setTimeout(r,200)); continue; }
     try{
-      const f=await readFrame(FILTERS[(i*2)%FILTERS.length],rotState.ROTS[rotState.ri],null,0);
+      const f=await readFrame(FILTERS[(i*2+k)%FILTERS.length],rotState.ROTS[rotState.ri],null,k);
       if(!f) continue;
       collectLive(f); showBoxes(f);
+      // stay in this orientation while any postcode is read; turn only after 3 readings with nothing
       if(f.pcs>=1){ rotState.empty=0; } else if(++rotState.empty>=3){ rotState.empty=0; rotState.ri=(rotState.ri+1)%rotState.ROTS.length; }
-    }catch(e){ await new Promise(r=>setTimeout(r,250)); }
+    }catch(e){ await new Promise(r=>setTimeout(r,300)); }
   }
 }
-// Gestures on the live view & Capture
+// Gestures on the live view: tap = focus there, press and hold = focus, then capture a still and review it.
 async function focusAt(x,y){
   const t=camTrack; if(!t) return; const caps=t.getCapabilities?.()||{};
   try{
@@ -967,31 +855,28 @@ async function focusAt(x,y){
 }
 function ring(x,y,cls){ const r=$('ring'); r.style.left=x+'px'; r.style.top=y+'px'; r.className=''; void r.offsetWidth; r.className=cls; r.hidden=false; }
 async function grabStill(){
+  // Android Chrome can take a real photo; elsewhere use the current video frame at full size
   try{ if(window.ImageCapture&&camTrack){ const b=await new ImageCapture(camTrack).takePhoto(); const img=new Image(); img.src=URL.createObjectURL(b); await img.decode(); return {el:img,w:img.naturalWidth,h:img.naturalHeight}; } }catch(e){}
   const c=document.createElement('canvas'); c.width=video.videoWidth; c.height=video.videoHeight; c.getContext('2d').drawImage(video,0,0);
   return {el:c,w:c.width,h:c.height};
 }
-async function doCaptureStill(x=innerWidth/2, y=innerHeight/2){
-  if(busy) return;
-  busy=true; ring(x,y,'hold'); glassChime('normal');
-  $('status').textContent='กำลังสแกนใบนำส่ง…';
-  await new Promise(r=>setTimeout(r,350));
-  try{
-    const src=await grabStill(); ring(x,y,'shot');
-    const {cap}=await readCapture(src);
-    const bad=checkCapture(cap);
-    if(bad) toast(bad); else await review(cap);
-  }catch(err){ toast('อ่านภาพไม่สำเร็จ ลองใหม่อีกครั้ง'); }
-  $('ring').hidden=true; busy=false; $('status').textContent='👓 AR Glass พร้อมสแกน'; refreshUI();
-}
-const snapBtn=$('snapBtn');
-if(snapBtn) snapBtn.onclick=()=>doCaptureStill();
-
 let holdT=null, downAt=null;
 video.addEventListener('pointerdown',e=>{
   if(mode!=='cam'||busy) return;
   downAt={x:e.clientX,y:e.clientY}; ring(e.clientX,e.clientY,'focus'); focusAt(e.clientX,e.clientY);
-  holdT=setTimeout(()=>{ holdT=null; doCaptureStill(downAt.x,downAt.y); },550);
+  holdT=setTimeout(async()=>{
+    holdT=null; ring(downAt.x,downAt.y,'hold'); busy=true; navigator.vibrate?.(30);
+    $('status').textContent='กำลังโฟกัส…';
+    await new Promise(r=>setTimeout(r,500));            // let focus settle before taking the still
+    $('status').textContent='กำลังอ่านภาพ…';
+    try{
+      const src=await grabStill(); ring(downAt.x,downAt.y,'shot');
+      const {cap}=await readCapture(src);
+      const bad=checkCapture(cap);
+      if(bad) toast(bad); else await review(cap);
+    }catch(err){ toast('อ่านภาพไม่สำเร็จ ลองใหม่'); }
+    $('ring').hidden=true; busy=false; $('status').textContent='กำลังสแกน…';
+  },550);
 });
 const cancelHold=()=>{ if(holdT){ clearTimeout(holdT); holdT=null; } };
 video.addEventListener('pointerup',cancelHold); video.addEventListener('pointercancel',cancelHold);
@@ -1022,7 +907,6 @@ $('file').onchange=async()=>{
   const files=[...$('file').files]; $('file').value=''; if(!files.length) return;
   mode='img';
   video.srcObject?.getTracks().forEach(t=>t.stop()); video.hidden=true; $('msg').hidden=true; $('torch').hidden=true;
-  $('shutterBar').hidden=true;
   still.hidden=false; $('strip').hidden=false; $('cam').hidden=false;
   const start=shots.length;
   shots.push(...files.map(f=>({url:URL.createObjectURL(f),dets:null})));
