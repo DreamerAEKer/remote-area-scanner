@@ -23,8 +23,6 @@ button.on{border-color:var(--amber);color:var(--amber)}
 #sessBtn{font-size:13px;padding:6px 12px;font-variant-numeric:tabular-nums}
 #sessBtn.ok{border-color:var(--green);color:var(--green)}
 #sessBtn.bad{border-color:var(--red);color:var(--red)}
-#rotBtn{font-size:13px;padding:6px 12px;font-variant-numeric:tabular-nums}
-#rotBtn.on{border-color:var(--amber);color:var(--amber);background:rgba(255,176,32,.18);font-weight:700}
 #msg{position:fixed;left:16px;right:16px;top:40%;text-align:center;font-size:15px;line-height:1.6;color:var(--muted)}
 #msg button{margin-top:12px}
 #strip{position:fixed;left:0;right:0;bottom:0;padding:10px 12px calc(env(safe-area-inset-bottom,0px) + 10px);display:flex;gap:8px;overflow-x:auto;background:linear-gradient(#0000,#000c)}
@@ -123,14 +121,6 @@ input{-webkit-user-select:text;user-select:text}
 #shutterBar{position:fixed;left:0;right:0;bottom:calc(env(safe-area-inset-bottom,0px) + 78px);display:flex;justify-content:center;pointer-events:none;z-index:4}
 .shutter-btn{pointer-events:auto;background:rgba(17,22,27,.85);border:1.5px solid var(--amber);color:#fff;border-radius:99px;padding:9px 22px;font-size:14px;font-weight:700;display:flex;align-items:center;gap:8px;box-shadow:0 4px 18px rgba(255,176,32,.35),0 0 10px rgba(0,0,0,.8);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);cursor:pointer;transition:transform .12s,background .12s}
 .shutter-btn:active{transform:scale(.95);background:var(--amber);color:#000}
-@media (orientation: landscape) {
-  #bar{padding:calc(env(safe-area-inset-top,0px) + 6px) calc(env(safe-area-inset-right,0px) + 12px) 6px calc(env(safe-area-inset-left,0px) + 12px);gap:6px}
-  #shutterBar{left:auto;right:calc(env(safe-area-inset-right,0px) + 16px);top:50%;bottom:auto;transform:translateY(-50%)}
-  .shutter-btn{padding:14px 16px;font-size:13px;border-radius:20px;flex-direction:column;gap:4px;max-width:140px;text-align:center}
-  #cov{left:calc(env(safe-area-inset-left,0px) + 12px);right:auto;bottom:calc(env(safe-area-inset-bottom,0px) + 8px);max-width:320px;font-size:11px;padding:6px 10px}
-  #cov .t b{font-size:12px}
-  .repair-bar{max-width:480px;left:50%;transform:translateX(-50%)}
-}
 
 </style>
 </head>
@@ -141,7 +131,6 @@ input{-webkit-user-select:text;user-select:text}
 <div id="bar">
   <span class="chip" id="status">กำลังเปิดกล้อง…</span>
   <span class="sp"></span>
-  <button id="rotBtn" aria-label="หมุนทิศทางเอกสาร">🔄 ออโต้</button>
   <button id="sessBtn" aria-label="ดูชุดที่สแกน">ชุด · 0 แถว</button>
   <button id="torch" hidden aria-label="ไฟฉาย">⚡</button>
   <button id="cam" hidden aria-label="กลับไปใช้กล้อง">📷</button>
@@ -199,7 +188,7 @@ const DATA=[
 ];
 const BY_CODE={};
 for(const [seq,prov,office,code,area] of DATA) (BY_CODE[code] ||= []).push({seq,prov,office,area});
-const APP_VERSION='v15';   // shown in the app; every version is listed at versions.html
+const APP_VERSION='v14';   // shown in the app; every version is listed at versions.html
 const $=id=>document.getElementById(id);
 document.addEventListener('DOMContentLoaded',()=>{ const v=$('ver'); if(v) v.textContent=APP_VERSION; });
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -703,38 +692,15 @@ function review(cap){
     render(); $('review').hidden=false;
   });
 }
-/* ================= Rotation & Orientation Handling ================= */
-// Supports scanning documents horizontally (e.g. A4 manifest on desk or monitor)
-// Can auto-detect or manually cycle: Auto -> 90° ขวา -> 270° ซ้าย -> 0° ตั้ง
-const ROT_MODES=[
-  {v:null, label:'🔄 ออโต้', desc:'หมุนตามการถือเครื่อง'},
-  {v:90, label:'🔄 90° ขวา', desc:'เอกสารแนวนอน ขวา'},
-  {v:270, label:'🔄 270° ซ้าย', desc:'เอกสารแนวนอน ซ้าย'},
-  {v:0, label:'🔄 0° ตั้ง', desc:'เอกสารแนวตั้งปกติ'}
-];
-let rotModeIndex=0;
-const rotOrder=()=>innerWidth>innerHeight?[270,90,0]:[0,90,270];
-const rotState={ROTS:rotOrder(),ri:0,empty:0,manual:null};
-const currentRot=()=>rotState.manual!=null ? rotState.manual : rotState.ROTS[rotState.ri];
-function cycleRot(){
-  rotModeIndex=(rotModeIndex+1)%ROT_MODES.length;
-  const m=ROT_MODES[rotModeIndex];
-  rotState.manual=m.v;
-  const b=$('rotBtn'); if(b){ b.textContent=m.label; b.classList.toggle('on',m.v!=null); }
-  toast(`โหมดหมุนภาพ: ${m.label} (${m.desc})`);
-}
-const rotBtn=$('rotBtn'); if(rotBtn) rotBtn.onclick=cycleRot;
-addEventListener('resize',()=>{ const o=rotOrder(); if(o[0]!==rotState.ROTS[0]){ rotState.ROTS=o; rotState.ri=0; rotState.empty=0; } });
-
 async function readCapture(src){
   // 1st pass: fast 1280px with default/known orientation
-  let rot=currentRot();
+  let rot=rotState.ROTS[rotState.ri]||0;
   let f=await readFrame(FILTERS[0],rot,src,0);
-  if(rotState.manual==null && f.pcs<2){
-    for(const r of [90,270,180,0]){
+  if(f.pcs<2){
+    for(const r of [90,270,180]){
       if(r===rot) continue;
       const g=await readFrame(FILTERS[0],r,src,0);
-      if(g&&g.pcs>f.pcs){ f=g; rot=r; }
+      if(g.pcs>f.pcs){ f=g; rot=r; }
       if(f.pcs>=3) break;
     }
   }
@@ -771,12 +737,9 @@ function draw(ts){
   const now=performance.now();
   const S=cur();
 
-  // Google Glass AR Viewfinder Center Reticle (Adaptive Landscape/Portrait)
+  // Google Glass AR Viewfinder Center Reticle
   if(mode==='cam'){
-    const isLand=W>H;
-    const cx=W/2, cy=H/2 + (isLand ? 0 : -30);
-    const rw=isLand ? Math.min(W*0.65, 520) : Math.min(W*0.75, 340);
-    const rh=isLand ? rw*0.45 : rw*0.55;
+    const cx=W/2, cy=H/2-30, rw=Math.min(W*0.75, 340), rh=rw*0.55;
     drawBrackets(cx-rw/2, cy-rh/2, rw, rh, 18, 'rgba(255,255,255,0.22)', 1.5);
     ctx.save();
     ctx.strokeStyle='rgba(255,255,255,0.25)'; ctx.lineWidth=1;
@@ -784,10 +747,6 @@ function draw(ts){
     ctx.moveTo(cx-12, cy); ctx.lineTo(cx+12, cy);
     ctx.moveTo(cx, cy-12); ctx.lineTo(cx, cy+12);
     ctx.stroke();
-    if(rotState.manual!=null){
-      ctx.fillStyle='rgba(255,176,32,0.7)'; ctx.font='600 11px sans-serif';
-      ctx.fillText('📐 หมุน: ' + rotState.manual + '°', cx-rw/2+4, cy-rh/2-8);
-    }
     // Sweeping laser scanline
     const scanY = cy - rh/2 + ((ts*0.14) % rh);
     const grad = ctx.createLinearGradient(cx-rw/2, scanY, cx+rw/2, scanY);
@@ -1051,16 +1010,18 @@ async function startCam(){
   $('status').textContent='👓 AR Glass พร้อมสแกน · เล็งไปที่รหัส ปณ.';
   liveLoop(0);
 }
+// phone held sideways → the page is sideways in the picture: try those turns first
+const rotOrder=()=>innerWidth>innerHeight?[270,90,0]:[0,90,270];
+const rotState={ROTS:rotOrder(),ri:0,empty:0};
+addEventListener('resize',()=>{ const o=rotOrder(); if(o[0]!==rotState.ROTS[0]){ rotState.ROTS=o; rotState.ri=0; rotState.empty=0; } });
 async function liveLoop(k=0){
   for(let i=0;mode==='cam';i++){
     if(busy){ await new Promise(r=>setTimeout(r,150)); continue; }
     try{
-      const f=await readFrame(FILTERS[(i*2)%FILTERS.length],currentRot(),null,0);
+      const f=await readFrame(FILTERS[(i*2)%FILTERS.length],rotState.ROTS[rotState.ri],null,0);
       if(!f) continue;
       collectLive(f); showBoxes(f);
-      if(rotState.manual==null){
-        if(f.pcs>=1){ rotState.empty=0; } else if(++rotState.empty>=3){ rotState.empty=0; rotState.ri=(rotState.ri+1)%rotState.ROTS.length; }
-      }
+      if(f.pcs>=1){ rotState.empty=0; } else if(++rotState.empty>=3){ rotState.empty=0; rotState.ri=(rotState.ri+1)%rotState.ROTS.length; }
     }catch(e){ await new Promise(r=>setTimeout(r,250)); }
   }
 }
