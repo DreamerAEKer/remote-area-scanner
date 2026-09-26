@@ -1,0 +1,979 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#000000">
+<title>สแกนพื้นที่ห่างไกล</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+:root{--amber:#ffb020;--green:#4ade80;--red:#ff6b6b;--text:#fff;--muted:#b9c6cf;--sheet:#11161b;--row:#1a2128;--line:rgba(255,255,255,.14);--font:'IBM Plex Sans Thai',system-ui,sans-serif}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;background:#000;color:var(--text);font-family:var(--font);overflow:hidden}
+[hidden]{display:none!important}
+video,#still{position:fixed;inset:0;width:100%;height:100%;object-fit:cover}
+#still{object-fit:contain}
+canvas{position:fixed;inset:0;width:100%;height:100%;pointer-events:none}
+#bar{position:fixed;left:0;right:0;top:0;padding:calc(env(safe-area-inset-top,0px) + 12px) 12px 12px;display:flex;gap:8px;align-items:center;flex-wrap:wrap;background:linear-gradient(#000a,#0000)}
+.chip{font-size:13px;padding:6px 12px;border-radius:99px;background:rgba(0,0,0,.55);border:1px solid rgba(255,255,255,.25)}
+.chip.hit{border-color:var(--amber);color:var(--amber);font-weight:700}
+.sp{flex:1}
+button{font:inherit;color:inherit;background:rgba(0,0,0,.55);border:1px solid rgba(255,255,255,.25);border-radius:99px;padding:8px 14px;font-size:14px;cursor:pointer}
+button.on{border-color:var(--amber);color:var(--amber)}
+#sessBtn{font-size:13px;padding:6px 12px;font-variant-numeric:tabular-nums}
+#sessBtn.ok{border-color:var(--green);color:var(--green)}
+#sessBtn.bad{border-color:var(--red);color:var(--red)}
+#msg{position:fixed;left:16px;right:16px;top:40%;text-align:center;font-size:15px;line-height:1.6;color:var(--muted)}
+#msg button{margin-top:12px}
+#strip{position:fixed;left:0;right:0;bottom:0;padding:10px 12px calc(env(safe-area-inset-bottom,0px) + 10px);display:flex;gap:8px;overflow-x:auto;background:linear-gradient(#0000,#000c)}
+#strip button{position:relative;flex:none;width:64px;height:84px;padding:0;border-radius:10px;overflow:hidden;border:2px solid rgba(255,255,255,.25)}
+#strip button.sel{border-color:#fff}
+#strip button.has{border-color:var(--amber)}
+#strip button.has.sel{box-shadow:0 0 0 2px #fff}
+#strip img{width:100%;height:100%;object-fit:cover}
+#strip span{position:absolute;right:3px;top:3px;min-width:20px;padding:0 5px;border-radius:99px;background:var(--amber);color:#000;font-size:12px;font-weight:700;line-height:20px}
+#strip span.wait{background:rgba(0,0,0,.7);color:#fff}
+
+/* session sheet */
+#review{position:fixed;inset:0;background:rgba(0,0,0,.6);display:flex;align-items:flex-end;justify-content:center;z-index:7}
+#review .in{width:100%;max-width:560px;max-height:92%;overflow:auto;background:var(--sheet);border-radius:18px 18px 0 0;padding:16px 16px calc(env(safe-area-inset-bottom,0px) + 20px)}
+.item.pick.sel{outline:2px solid var(--amber)}
+#sheet{position:fixed;inset:0;background:rgba(0,0,0,.6);display:flex;align-items:flex-end;justify-content:center;z-index:5}
+#sheet .in{width:100%;max-width:560px;max-height:90%;overflow:auto;background:var(--sheet);border-radius:18px 18px 0 0;padding:16px 16px calc(env(safe-area-inset-bottom,0px) + 20px)}
+.hd{display:flex;align-items:center;gap:8px;margin-bottom:12px}
+.hd input{flex:1;min-width:0;background:none;border:0;border-bottom:1px dashed var(--line);color:var(--text);font:700 18px var(--font);padding:4px 0}
+.hd input:focus{outline:none;border-color:var(--amber)}
+.tabs{display:flex;gap:6px;margin-bottom:14px}
+.tabs button{flex:1;border-radius:10px}
+.tabs button.sel{border-color:#fff;background:#fff;color:#000}
+.tot{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.tot div{padding:12px;border-radius:12px;background:var(--row)}
+.tot small{display:block;font-size:12px;color:var(--muted)}
+.tot b,.tot input{font-size:22px;font-weight:700;font-variant-numeric:tabular-nums}
+.tot input{width:100%;background:none;border:0;border-bottom:1px dashed var(--line);color:var(--text);font-family:var(--font);padding:0}
+.tot input:focus{outline:none;border-color:var(--amber)}
+.verdict{margin-top:10px;padding:12px 14px;border-radius:12px;font-weight:700;line-height:1.5}
+.verdict small{display:block;font-weight:400;font-size:13px}
+.verdict.ok{background:rgba(74,222,128,.12);color:var(--green)}
+.verdict.bad{background:rgba(255,107,107,.12);color:var(--red)}
+.verdict.wait{background:var(--row);color:var(--muted);font-weight:500}
+.sec{margin:18px 0 6px;font-size:13px;color:var(--muted)}
+.list{display:grid;gap:6px}
+.item{display:flex;gap:10px;align-items:center;padding:10px 12px;border-radius:10px;background:var(--row);font-size:14px;line-height:1.4;width:100%;text-align:left;border:0}
+.item.remote{background:rgba(255,176,32,.12);color:#ffe2a8}
+.item b{font-variant-numeric:tabular-nums}
+.item .r{margin-left:auto;text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+.item small{display:block;color:var(--muted);font-size:12px}
+.pill{font-size:12px;padding:2px 8px;border-radius:99px;border:1px solid currentColor;white-space:nowrap}
+.pill.ok{color:var(--green)} .pill.bad{color:var(--red)} .pill.am{color:var(--amber)}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(96px,1fr));gap:4px;font-size:13px;font-variant-numeric:tabular-nums}
+.grid .gcell{padding:6px 8px;border-radius:8px;background:var(--row);border:0;display:flex;justify-content:space-between;gap:6px;font-size:13px;font-variant-numeric:tabular-nums}
+.grid .gcell.remote{background:rgba(255,176,32,.18);color:var(--amber)}
+.grid .gcell i{font-style:normal;color:var(--muted)}
+.acts{display:flex;gap:8px;margin-top:18px;flex-wrap:wrap}
+.acts button{flex:1;min-width:140px;border-radius:12px;padding:12px}
+.acts .pri{background:var(--amber);color:#000;border-color:var(--amber);font-weight:700}
+.acts .danger{color:var(--red);border-color:rgba(255,107,107,.5)}
+.empty{color:var(--muted);font-size:14px;padding:12px 0}
+#cov{position:fixed;left:10px;right:10px;bottom:calc(env(safe-area-inset-bottom,0px) + 12px);max-width:560px;margin:0 auto;padding:10px 12px;border-radius:14px;background:rgba(0,0,0,.72);border:1px solid rgba(255,255,255,.2);text-align:left;display:block;width:auto;font-size:13px}
+#cov.up{bottom:calc(env(safe-area-inset-bottom,0px) + 112px)}
+#cov.done{border-color:var(--green)}
+#cov .t{display:flex;gap:8px;align-items:baseline;flex-wrap:wrap;font-variant-numeric:tabular-nums}
+#cov .t b{font-size:14px}
+#cov .t .m{color:var(--muted)}
+.cells{display:flex;flex-wrap:wrap;gap:2px;margin-top:6px}
+.cells i{width:9px;height:9px;border-radius:2px;background:rgba(255,255,255,.14)}
+.cells i.ok{background:var(--green)} .cells i.rm{background:var(--amber)} .cells i.q{background:transparent;outline:1px solid var(--red)}
+.cells.big{gap:3px} .cells.big i{width:14px;height:14px;border-radius:3px}
+#ring{position:fixed;width:84px;height:84px;margin:-42px 0 0 -42px;border:2px solid #fff;border-radius:50%;pointer-events:none;z-index:4}
+#ring.focus{animation:ringIn .45s ease-out forwards}
+#ring.hold{border-color:var(--amber);border-width:4px;animation:ringPulse .5s infinite alternate}
+#ring.shot{border-color:var(--green);border-width:4px}
+@keyframes ringIn{from{transform:scale(1.5);opacity:.3}to{transform:scale(1);opacity:1}}
+@keyframes ringPulse{to{transform:scale(.85)}}
+video{-webkit-touch-callout:none;-webkit-user-select:none;user-select:none;touch-action:none}
+#ask{position:fixed;left:10px;right:10px;top:calc(env(safe-area-inset-top,0px) + 70px);max-width:560px;margin:0 auto;padding:12px 14px;border-radius:14px;background:#1a1405;border:2px solid var(--amber);z-index:6;display:grid;gap:10px}
+#ask b{font-size:16px;color:var(--amber)} #ask small{display:block;color:var(--muted);font-size:13px;margin-top:2px}
+#ask .ab{display:flex;gap:8px} #ask .ab button{flex:1;border-radius:10px}
+#ask .pri{background:var(--amber);color:#000;border-color:var(--amber);font-weight:700}
+#ver{position:fixed;right:10px;top:calc(env(safe-area-inset-top,0px) + 64px);font-size:11px;color:rgba(255,255,255,.55);text-decoration:none;z-index:3}
+#bar,#cov,#review,#sheet,#ask,#toast,#strip{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
+input{-webkit-user-select:text;user-select:text}
+#cov .pct{color:var(--green);font-size:15px}
+#cov .bar{height:5px;border-radius:3px;background:rgba(255,255,255,.12);margin-top:6px;overflow:hidden}
+#cov .bar i{display:block;height:100%;background:var(--green);transition:width .4s}
+.beat{width:9px;height:9px;border-radius:50%;background:rgba(255,255,255,.25);align-self:center;flex:none}
+.beat.on{animation:beat .9s ease-out}
+@keyframes beat{0%{background:#5fe3ff;box-shadow:0 0 8px #5fe3ff}100%{background:rgba(255,255,255,.25);box-shadow:none}}
+.fixline{margin-top:6px;font-size:12px;color:var(--red);font-weight:700}
+.cells i.nd{outline:2px solid var(--red);animation:nd 1s infinite alternate}
+@keyframes nd{to{opacity:.35}}
+.fix{margin-top:10px;padding:12px;border-radius:12px;border:1px solid rgba(255,107,107,.5);background:rgba(255,107,107,.08);display:grid;gap:8px}
+.fix b{color:var(--red)} .fix small{color:var(--muted);font-size:13px}
+.fix .ab{display:flex;gap:8px;flex-wrap:wrap} .fix .ab button{flex:1;min-width:140px;border-radius:10px}
+.fix .pri{background:var(--amber);color:#000;border-color:var(--amber);font-weight:700}
+.lnk{background:none;border:0;color:var(--muted);text-decoration:underline;padding:0;justify-self:start}
+@media (prefers-reduced-motion:reduce){.beat.on,.cells i.nd{animation:none}}
+#toast{position:fixed;left:50%;top:calc(env(safe-area-inset-top,0px) + 70px);transform:translateX(-50%);max-width:92%;padding:10px 16px;border-radius:12px;background:#fff;color:#000;font-weight:700;font-size:15px;z-index:6;text-align:center;box-shadow:0 6px 30px rgba(0,0,0,.5)}
+#toast.ok{background:var(--green)}
+.sheetrow .cells{margin-top:6px}
+.back{border-radius:10px;padding:6px 10px;font-size:13px}
+
+
+#captureControls{position:fixed;left:12px;right:12px;bottom:calc(env(safe-area-inset-bottom,0px) + 12px);display:flex;justify-content:center;gap:8px;z-index:4}
+#captureControls button{background:#18212a;min-height:48px;border-radius:14px}
+#captureControls .pri{background:var(--amber);color:#000;font-weight:700;border:0;min-width:160px}
+button:disabled{opacity:.5;cursor:wait}
+#cov,#cov.up{bottom:calc(env(safe-area-inset-bottom,0px) + 78px);max-height:24vh;overflow:auto}
+#strip{bottom:calc(env(safe-area-inset-bottom,0px) + 70px)}
+body.hasShots #cov{bottom:calc(env(safe-area-inset-bottom,0px) + 174px)}
+.reviewRows{display:grid;gap:8px;margin-top:12px}.reviewRow{display:grid;grid-template-columns:40px 1fr 1fr;gap:8px;align-items:center;padding:8px;border-radius:10px;background:var(--row)}
+.reviewRow.warn{border:1px solid var(--amber)}.reviewRow label{font-size:12px;color:var(--muted)}
+.reviewRow input{display:block;width:100%;min-width:0;background:#080e13;border:1px solid var(--line);border-radius:6px;color:#fff;padding:8px;font:16px var(--font)}
+.reviewRow small{grid-column:2 / 4;color:var(--amber)}
+.photoProof{width:100%;max-height:38vh;object-fit:contain;background:#000;border-radius:8px;margin-top:10px}
+#bar{z-index:4}#status{max-width:100%;white-space:normal}
+</style>
+</head>
+<body>
+<video id="video" playsinline muted autoplay></video>
+<img id="still" alt="" hidden>
+<canvas id="ov"></canvas>
+<div id="bar">
+  <span class="chip" id="status">กำลังเปิดกล้อง…</span>
+  <span class="sp"></span>
+  <button id="sessBtn" aria-label="ดูชุดที่สแกน">ชุด · 0 แถว</button>
+  <button id="torch" hidden aria-label="ไฟฉาย">⚡</button>
+  <button id="cam" hidden aria-label="กลับไปใช้กล้อง">📷</button>
+  <button id="pick" aria-label="เลือกรูป">🖼</button>
+</div>
+<div id="msg" hidden></div>
+<div id="captureControls"><button class="pri" id="shutter" disabled>ถ่ายแล้วอ่าน</button><button id="rotatePhoto" hidden>หมุนภาพ 90°</button><button id="retryPhoto" hidden>อ่านภาพนี้อีกครั้ง</button></div>
+<div id="strip" hidden></div>
+<div id="ring" hidden></div>
+<button id="cov" hidden aria-label="ดูความคืบหน้าของใบนำส่ง"></button>
+<a id="ver" href="../versions.html"></a>
+<div id="toast" hidden></div>
+<div id="ask" hidden></div>
+<div id="review" hidden><div class="in" id="reviewIn"></div></div>
+<div id="sheet" hidden><div class="in" id="sheetIn"></div></div>
+<input type="file" id="file" accept="image/*" multiple hidden>
+
+<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js"></script>
+<script>
+// รหัสไปรษณีย์ 85 พื้นที่ห่างไกล/เกาะ (ประกาศไปรษณีย์ไทย มีผล 1 ม.ค. 2569)
+// [ลำดับ, จังหวัด, ที่ทำการ, รหัส, พื้นที่ ('' = ทุกพื้นที่ของรหัส)]
+const DATA=[
+[1,'ชลบุรี','เกาะสีชัง','20120',''],[2,'ชลบุรี','บางละมุง','20150','เฉพาะเกาะล้าน'],
+[3,'ระยอง','เพ','21160','เฉพาะเกาะเสม็ด'],[4,'ตราด','ตราด','23000','เฉพาะเกาะกูด'],
+[5,'ตราด','แหลมงอบ','23120','เฉพาะเกาะหมาก'],[6,'ตราด','เกาะช้าง','23170',''],
+[7,'เชียงใหม่','สะเมิง','50250',''],[8,'เชียงใหม่','อมก๋อย','50310',''],[9,'เชียงใหม่','เวียงแหง','50350',''],
+[10,'น่าน','ทุ่งช้าง','55130',''],[11,'น่าน','บ่อเกลือ','55220',''],
+[12,'เชียงราย','เวียงป่าเป้า','57170',''],[13,'เชียงราย','แม่สรวย','57180',''],[14,'เชียงราย','แม่เจดีย์','57260',''],
+[15,'เชียงราย','เวียงแก่น','57310',''],[16,'เชียงราย','ขุนตาล','57340',''],
+[17,'แม่ฮ่องสอน','แม่ฮ่องสอน','58000',''],[18,'แม่ฮ่องสอน','แม่สะเรียง','58110',''],[19,'แม่ฮ่องสอน','แม่ลาน้อย','58120',''],
+[20,'แม่ฮ่องสอน','ปาย','58130',''],[21,'แม่ฮ่องสอน','ขุนยวม','58140',''],[22,'แม่ฮ่องสอน','ปางมะผ้า','58150',''],
+[23,'ตาก','ท่าสองยาง','63150',''],[24,'ตาก','อุ้มผาง','63170',''],
+[25,'กาญจนบุรี','ทองผาภูมิ','71180',''],[26,'กาญจนบุรี','สังขละบุรี','71240',''],
+[27,'กระบี่','เหนือคลอง','81130','เฉพาะเกาะศรีบอยา'],[28,'กระบี่','เกาะลันตา','81150',''],[29,'กระบี่','เกาะพีพี','81210',''],
+[30,'พังงา','พังงา','82000','เฉพาะเกาะปันหยี'],[31,'พังงา','เกาะยาว','82160',''],
+[32,'ภูเก็ต','ภูเก็ต','83000',''],[33,'ภูเก็ต','กะรน','83100',''],[34,'ภูเก็ต','ถลาง','83110',''],
+[35,'ภูเก็ต','กะทู้','83120',''],[36,'ภูเก็ต','ราไวย์','83130',''],[37,'ภูเก็ต','ป่าตอง','83150',''],
+[38,'สุราษฎร์ธานี','เกาะสมุย','84140',''],[39,'สุราษฎร์ธานี','ละไม','84310',''],[40,'สุราษฎร์ธานี','เฉวง','84320',''],
+[41,'สุราษฎร์ธานี','แม่น้ำ','84330',''],[42,'สุราษฎร์ธานี','ดอนสัก','84220','เฉพาะเกาะพลวย'],[43,'สุราษฎร์ธานี','ดอนสัก','84220','เฉพาะเกาะนกเภา'],
+[44,'สุราษฎร์ธานี','เกาะพะงัน','84280',''],[45,'สุราษฎร์ธานี','เกาะเต่า','84360',''],
+[46,'ระนอง','ระนอง','85000','เฉพาะเกาะพยาม'],
+[47,'สตูล','สตูล','91000','เฉพาะเกาะสาหร่าย'],[48,'สตูล','สตูล','91000','เฉพาะปูยู'],
+[49,'สตูล','ละงู','91110','เฉพาะเกาะหลีเป๊ะ'],[50,'สตูล','ละงู','91110','เฉพาะเกาะบุโหลน'],
+[51,'ตรัง','กันตัง','92110','เฉพาะเกาะลิบง'],[52,'ตรัง','กันตัง','92110','เฉพาะเกาะมุก'],[53,'ตรัง','ปะเหลียน','92120','เฉพาะเกาะสุกร'],
+[54,'ปัตตานี','ปัตตานี','94000',''],[55,'ปัตตานี','สายบุรี','94110',''],[56,'ปัตตานี','โคกโพธิ์','94120',''],
+[57,'ปัตตานี','ปะนาเระ','94130',''],[58,'ปัตตานี','มายอ','94140',''],[59,'ปัตตานี','ยะหริ่ง','94150',''],
+[60,'ปัตตานี','ยะรัง','94160',''],[61,'ปัตตานี','หนองจิก','94170',''],[62,'ปัตตานี','นาประดู่','94180',''],
+[63,'ปัตตานี','ปาลัส','94190',''],[64,'ปัตตานี','ไม้แก่น','94220',''],[65,'ปัตตานี','กะพ้อ','94230',''],
+[66,'ยะลา','ยะลา','95000',''],[67,'ยะลา','เบตง','95110',''],[68,'ยะลา','ยะหา','95120',''],[69,'ยะลา','บันนังสตา','95130',''],
+[70,'ยะลา','รามัน','95140',''],[71,'ยะลา','ธารโต','95150',''],[72,'ยะลา','ลำใหม่','95160',''],[73,'ยะลา','แม่หวาด','95170',''],
+[74,'นราธิวาส','นราธิวาส','96000',''],[75,'นราธิวาส','ตากใบ','96110',''],[76,'นราธิวาส','สุไหงโก-ลก','96120',''],
+[77,'นราธิวาส','ตันหยงมัส','96130',''],[78,'นราธิวาส','สุไหงปาดี','96140',''],[79,'นราธิวาส','รือเสาะ','96150',''],
+[80,'นราธิวาส','แว้ง','96160',''],[81,'นราธิวาส','บาเจาะ','96170',''],[82,'นราธิวาส','ยี่งอ','96180',''],
+[83,'นราธิวาส','สุคิริน','96190',''],[84,'นราธิวาส','ศรีสาคร','96210',''],[85,'นราธิวาส','ดุซงญอ','96220',''],
+];
+const BY_CODE={};
+for(const [seq,prov,office,code,area] of DATA) (BY_CODE[code] ||= []).push({seq,prov,office,area});
+const APP_VERSION='v13-preview';   // shown in the app; every version is listed at versions.html
+const $=id=>document.getElementById(id);
+document.addEventListener('DOMContentLoaded',()=>{ const v=$('ver'); if(v) v.textContent=APP_VERSION; });
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const baht=n=>n==null||isNaN(n)?'—':Number(n).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
+const video=$('video'), still=$('still'), ov=$('ov'), ctx=ov.getContext('2d');
+const grab=document.createElement('canvas'), gctx=grab.getContext('2d',{willReadFrequently:true});
+let mode='cam', worker=null, dets=[], seen=new Set(), lastBeep=0;
+
+/* ================= Sessions → manifests (ใบนำส่ง) — kept on this phone ================= */
+// session  = {id, name, created, updated, sheets:[sheet], active:sheetId, loose:{code:n}}
+// sheet    = {id, no, rows:{seq:{price:{v:n}, code:{v:n}, trk:{serial:n}, manual}}, totals:{v:n}, manualTotal, last:{seq:n}, done}
+// A manifest's rows are keyed by its own ลำดับ, so pages 1 and 2 of one manifest join up, and a new manifest
+// (which starts again at ลำดับ 1) is told apart by its postcodes and item numbers.
+const KEY='ras-sessions-v13-preview'; // separate trial storage; never alter v12 sessions
+let sessions=[], curId=null;
+const uid=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,6);
+const newSheet=S=>{ const sh={id:uid(),no:(S.sheets.reduce((m,x)=>Math.max(m,x.no),0))+1,rows:{},totals:{},manualTotal:null,last:{},done:false}; S.sheets.push(sh); S.active=sh.id; return sh; };
+try{
+  const v2=JSON.parse(localStorage.getItem(KEY));
+  if(v2?.list){ sessions=v2.list; curId=v2.cur; }
+  else{ const v1=JSON.parse(localStorage.getItem('ras-sessions-v13-unused'));   // carry over sessions from the first version
+    if(v1?.list){ sessions=v1.list.map(o=>({id:o.id,name:o.name,created:o.created,updated:o.updated,loose:o.loose||{},active:'a',
+      sheets:[{id:'a',no:1,rows:Object.fromEntries(Object.entries(o.rows).map(([k,r])=>[k,{price:r.price,code:r.code,trk:{}}])),totals:o.totals||{},manualTotal:o.manualTotal??null,last:{},done:false}]})); curId=v1.cur; } }
+}catch(e){}
+function persist(){ try{ localStorage.setItem(KEY,JSON.stringify({list:sessions,cur:curId})); }catch(e){} }
+function newSession(){
+  const d=new Date();
+  const S={id:uid(),name:`ชุด ${d.getDate()}/${d.getMonth()+1} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`,
+    created:Date.now(),updated:Date.now(),sheets:[],active:null,loose:{}};
+  newSheet(S); sessions.unshift(S); curId=S.id; persist(); return S;
+}
+const cur=()=>sessions.find(s=>s.id===curId)||newSession();
+const activeSheet=S=>S.sheets.find(x=>x.id===S.active)||S.sheets.at(-1)||newSheet(S);
+const sheetEmpty=sh=>!Object.keys(sh.rows).length&&!Object.keys(sh.totals).length&&sh.manualTotal==null;
+const isEmpty=S=>S.sheets.every(sheetEmpty)&&!Object.keys(S.loose).length;
+const topVote=v=>{ let b=null,n=0; for(const k in v||{}) if(v[k]>n){n=v[k];b=k;} return b; };
+const inc=(o,k,w=1)=>{ o[k]=(o[k]||0)+w; };
+
+function sheetSummary(sh){
+  const rows=Object.entries(sh.rows).map(([seq,r])=>{
+    let price=null, unsure=false;
+    if(r.manual!=null){ price=r.manual; unsure=!!r.needsReview; }
+    else{ const k=topVote(r.price); if(k!=null) price=+k; unsure=!!r.needsReview; } // retain exact cents; never invent a charge
+    return {seq:+seq,price,unsure,code:topVote(r.code),manual:r.manual!=null};
+  }).sort((a,b)=>a.seq-b.seq);
+  const cents=rows.reduce((t,r)=>t+(r.price!=null?Math.round(r.price*100):0),0);
+  const lastSeq=topVote(sh.last)!=null?+topVote(sh.last):null;          // last row = the one just above "รวมเงิน"
+  const n=Math.max(lastSeq||0,rows.length?rows.at(-1).seq:0);
+  const have=new Set(rows.map(r=>r.seq)); const missing=[]; for(let i=1;i<=n;i++) if(!have.has(i)) missing.push(i);
+  const total=sh.manualTotal!=null?sh.manualTotal:(topVote(sh.totals)!=null?+topVote(sh.totals):null);
+  const diff=total==null?null:Math.round(total*100)-cents;
+  const remote=rows.filter(r=>BY_CODE[r.code]);
+  // most common price among normal rows: a remote row at that price may be a misread code or a missing +20
+  const pc={}; rows.filter(r=>!BY_CODE[r.code]&&r.price!=null).forEach(r=>inc(pc,r.price.toFixed(2)));
+  const usual=topVote(pc)!=null?+topVote(pc):null;
+  remote.forEach(r=>r.suspect=usual!=null&&r.price!=null&&r.price<=usual);
+  const noPrice=rows.filter(r=>r.price==null), unsure=rows.filter(r=>r.unsure);
+  const noCode=rows.filter(r=>!r.code);
+  const complete=total!=null&&!sh.totalNeedsReview&&n>0&&!missing.length&&!noPrice.length&&!noCode.length&&!unsure.length&&diff===0;
+  return {rows,sum:cents/100,n,missing,total,diff,remote,noPrice,noCode,unsure,complete};
+}
+function sessionSummary(S){
+  const list=S.sheets.map(sh=>({sh,a:sheetSummary(sh)})).filter(x=>!sheetEmpty(x.sh)||x.sh.id===S.active);
+  const sum=list.reduce((t,x)=>t+Math.round(x.a.sum*100),0)/100;
+  const remote=list.flatMap(x=>x.a.remote.map(r=>({...r,no:x.sh.no})));
+  const rowCodes=new Set(list.flatMap(x=>x.a.rows.map(r=>r.code)));
+  const loose=Object.keys(S.loose).filter(c=>!rowCodes.has(c));
+  return {list,sum,remote,loose,done:list.filter(x=>x.sh.done).length,rows:list.reduce((t,x)=>t+x.a.rows.length,0)};
+}
+
+/* ---- which manifest does a frame belong to? ---- */
+function routeScore(sh,rows){
+  let m=0,c=0;
+  const withTrk=Object.entries(sh.rows).map(([k,r])=>({seq:+k,serial:topVote(r.trk)})).filter(x=>x.serial!=null);
+  for(const r of rows){
+    const row=sh.rows[r.seq];
+    // same ลำดับ already saved: its postcode must match (saved rows are already confirmed, so one vote is enough)
+    if(row&&r.code){ const tc=topVote(row.code); if(tc===r.code) m++; else if(tc) c++; }
+    if(r.serial==null) continue;
+    const own=row&&topVote(row.trk);
+    if(own!=null){ if(Math.abs(r.serial-(+own))<=1) m++; else c++; }
+    else if(withTrk.length){
+      // item numbers run on with ลำดับ inside one manifest: serial(k) - serial(j) ≈ k - j
+      const j=withTrk.reduce((b,x)=>Math.abs(x.seq-r.seq)<Math.abs(b.seq-r.seq)?x:b);
+      if(Math.abs((r.serial-(+j.serial))-(r.seq-j.seq))<=2) m++; else c++;
+    }
+  }
+  return {m,c};
+}
+function suggest(S,rows){
+  const A=activeSheet(S), opts=S.sheets.filter(sh=>!sheetEmpty(sh)||sh.id===A.id).map(sh=>({sh,...routeScore(sh,rows)}));
+  const best=opts.filter(o=>o.m>=2&&o.m>o.c).sort((a,b)=>b.m-a.m)[0];
+  if(best) return {opts,target:best.sh.id,why:`ตรงกับใบที่ ${best.sh.no} ${best.m} จุด${best.c?` (ไม่ตรง ${best.c})`:''}${best.sh.done?' — ใบนี้ครบแล้ว ข้อมูลนี้ซ้ำ':''}`};
+  if(sheetEmpty(A)) return {opts,target:A.id,why:`ใบที่ ${A.no} ยังว่าง`};
+  const sa=opts.find(o=>o.sh.id===A.id);
+  if(sa.c>=3) return {opts,target:'new',why:`ลำดับเดียวกับใบที่ ${A.no} แต่รหัส/เลขสิ่งของไม่ตรง ${sa.c} จุด — น่าจะเป็นใบใหม่`};
+  if(A.done) return {opts,target:'new',why:`ใบที่ ${A.no} ครบแล้ว — น่าจะเป็นใบถัดไป`};
+  return {opts,target:A.id,why:`ลำดับไม่ซ้ำกับที่มี — น่าจะเป็นหน้าต่อของใบที่ ${A.no}`};
+}
+
+/* ---- UI: progress bar over the camera + toast ---- */
+let toastT=null;
+function toast(msg,ok){ const t=$('toast'); t.textContent=msg; t.className=ok?'ok':''; t.hidden=false; clearTimeout(toastT); toastT=setTimeout(()=>t.hidden=true,2600); }
+const cellsHTML=(a,big,need)=>{ if(!a.n) return ''; const by=new Map(a.rows.map(r=>[r.seq,r])); let h='';
+  for(let i=1;i<=a.n;i++){ const r=by.get(i); h+=`<i class="${!r?'':r.price==null||r.unsure?'q':BY_CODE[r.code]?'rm':'ok'}${need&&need.has(i)?' nd':''}" title="${i}"></i>`; }
+  return `<div class="cells${big?' big':''}">${h}</div>`; };
+function refreshUI(){
+  const S=cur(), A=activeSheet(S), a=sheetSummary(A), ss=sessionSummary(S), b=$('sessBtn');
+  b.textContent=`ชุด · ${ss.list.length} ใบ${ss.done?` (ครบ ${ss.done})`:''}${ss.remote.length+ss.loose.length?` · ⚑${ss.remote.length+ss.loose.length}`:''}`;
+  b.className=ss.list.length&&ss.done===ss.list.length?'ok':'';
+  const c=$('cov'); c.hidden=false; c.classList.toggle('up',mode==='img'); c.classList.toggle('done',A.done);
+  const state=A.done?'<b style="color:var(--green)">✓ ครบ ยอดตรง</b>':a.unsure.length||a.noCode.length||A.totalNeedsReview?'<b style="color:var(--amber)">ยังต้องตรวจ</b>':a.total!=null&&a.diff!==0&&!a.missing.length&&!a.noPrice.length?`<b style="color:var(--red)">✗ ต่าง ฿${baht(Math.abs(a.diff)/100)}</b>`:'';
+  // progress: rows with a clear charge out of all rows (the count is only final once "รวมเงิน" is seen)
+  const good=a.rows.filter(r=>r.price!=null&&!r.unsure).length, known=a.total!=null&&a.n, pct=known?Math.round(100*good/a.n):0;
+  const need=repairNeed(A);
+  c.innerHTML=`<div class="t"><span class="beat" id="beat"></span><b>ใบที่ ${A.no}</b><b class="pct">${known?pct+'%':''}</b><span>${known?`${good}/${a.n}`:`${good}`} แถว · ฿${baht(a.sum)}</span>${a.total!=null?`<span class="m">ในใบ ฿${baht(a.total)}</span>`:'<span class="m">ยังไม่เห็นรวมเงิน</span>'}${state}${frameMs&&mode==='cam'?`<span class="m">~${(frameMs/1000).toFixed(1)} วิ/ภาพ</span>`:''}</div>
+    <div class="bar"><i style="width:${pct}%"></i></div>
+    ${need?`<div class="fixline">กำลังซ่อม · เหลือ ${need.size?'ลำดับ '+[...need].slice(0,12).join(', ')+(need.size>12?' …':''):'ยอดรวมเงิน'}</div>`:''}${cellsHTML(a,false,need)}`;
+  if(!$('sheet').hidden) renderSheet();
+}
+function checkDone(sh){
+  const a=sheetSummary(sh);
+  if(!a.complete){ sh.done=false; return; }
+  if(sh.done) return;
+  if(a.complete){ sh.done=true; persist(); beep(); setTimeout(beep,250); toast(`✓ ใบที่ ${sh.no} ครบ ${a.n} แถว ยอดตรง ฿${baht(a.sum)}`,true); }
+}
+
+/* ================= Reading a frame ================= */
+const FIX={O:'0',o:'0',D:'0',Q:'0',I:'1',l:'1','|':'1',i:'1',S:'5',s:'5',B:'8',Z:'2',z:'2',G:'6'};
+function asPostcode(t){
+  t=t.replace(/^[^\w|]+|[^\w|]+$/g,'');
+  if(t.length!==5||(t.match(/\d/g)||[]).length<4) return null;
+  t=[...t].map(c=>FIX[c]??c).join('');
+  return /^[1-9]\d{4}$/.test(t)?t:null;
+}
+function asMoney(t){ t=t.replace(/^[^\d]+|[^\d]+$/g,''); return /^\d{1,3}(,\d{3})+\.\d{2}$|^\d{1,6}\.\d{2}$/.test(t)?parseFloat(t.replace(/,/g,'')):null; }
+const asSeq=t=>{ t=t.replace(/[.)\]]$/,''); return /^\d{1,3}$/.test(t)&&+t>0?+t:null; };
+function asSerial(t){   // 13-character item number, e.g. EQ420949020TH → running serial 42094902
+  t=t.replace(/[^A-Za-z0-9]/g,'').toUpperCase(); if(t.length!==13) return null;
+  const d=[...t.slice(2,11)].map(c=>FIX[c]??FIX[c.toLowerCase()]??c).join('');
+  return /^[A-Z]{2}$/.test(t.slice(0,2))&&/^\d{9}$/.test(d)?+d.slice(0,8):null;
+}
+
+// Table rows are anchored on the postcode column. The printed ลำดับ is read where possible, then every row's
+// number is taken from a local fit of row position (y) against the clearly-read numbers, so a missed or
+// misread ลำดับ (1 read as nothing, 31 read as 3) still gets the right number.
+const median=a=>{ const b=[...a].sort((x,y)=>x-y); return b.length?b[b.length>>1]:null; };
+function tableRows(words){
+  const W=words.map(w=>{ const b=w.bbox; return {w,t:w.text.trim(),b,cx:(b.x0+b.x1)/2,cy:(b.y0+b.y1)/2,h:b.y1-b.y0}; }).filter(x=>x.t);
+  // straighten a tilted photo: postcode and item number sit side by side on one row, so their dy/dx is the tilt
+  const P=W.filter(x=>asPostcode(x.t)), T=W.filter(x=>asSerial(x.t)!=null), sl=[];
+  for(const p of P){ const t=T.filter(t=>t.cx>p.cx&&t.cx-p.cx<p.h*20).sort((a,b)=>Math.abs(a.cy-p.cy)-Math.abs(b.cy-p.cy))[0];
+    if(t&&Math.abs(t.cy-p.cy)<p.h*1.2) sl.push((t.cy-p.cy)/(t.cx-p.cx)); }
+  const tilt=sl.length>=3?median(sl):0;
+  if(tilt) for(const x of W){ x.cy-=tilt*x.cx; x.b={x0:x.b.x0,x1:x.b.x1,y0:x.b.y0-tilt*x.cx,y1:x.b.y1-tilt*x.cx}; }
+  const next=(a,dir)=>{ let best=null;
+    for(const x of W){ if(x===a) continue;
+      const dx=dir>0?x.b.x0-a.b.x1:a.b.x0-x.b.x1; if(dx<-a.h*.3) continue;
+      if(Math.abs(x.cy-a.cy)>0.6*Math.max(a.h,x.h)) continue;
+      if(!best||dx<best.dx) best={x,dx}; }
+    return best?.x; };
+  const walk=(a,dir)=>{ const out=[]; for(let k=0;k<30;k++){ a=next(a,dir); if(!a||out.includes(a)) break; out.push(a); } return out; };
+
+  // postcodes of the destination column only (drops the sender address, footer, etc.)
+  let pcs=W.filter(x=>(x.pc=asPostcode(x.t)));
+  if(pcs.length>=3){ const mx=median(pcs.map(x=>x.b.x0)); pcs=pcs.filter(x=>Math.abs(x.b.x0-mx)<3*x.h); }
+  // A tracking number can anchor a row even if its postcode was unreadable.
+  const anchorsForRows=[...pcs,...T.filter(t=>!pcs.some(p=>Math.abs(p.cy-t.cy)<Math.max(p.h,t.h)*.7))];
+  const rows=anchorsForRows.map(p=>{
+    const left=walk(p,-1), right=walk(p,1);
+    const first=left.at(-1); const readSeq=first?asSeq(first.t):null;
+    const money=right.map(x=>asMoney(x.t)).filter(m=>m!=null&&m<10000);
+    const serial=asSerial(p.t)??right.map(x=>asSerial(x.t)).find(v=>v!=null)??null;
+    const priceWord=right.find(x=>asMoney(x.t)!=null&&asMoney(x.t)<10000)?.w;
+    const confidence=Math.min(p.w.confidence??0,priceWord?.confidence??0,first?.w.confidence??0);
+    return {p,y:p.cy,readSeq,code:p.pc||null,codeWord:p.pc?p.w:null,anchorWord:p.w,price:money.length?money[0]:null,serial,line:[p,...left,...right],confidence};
+  });
+
+  // fit y ≈ a + pitch·seq from the rows whose number was read, keep the consistent ones
+  const anchors=rows.filter(r=>r.readSeq!=null);
+  const slopes=[]; for(let i=0;i<anchors.length;i++) for(let j=i+1;j<anchors.length;j++){ const ds=anchors[j].readSeq-anchors[i].readSeq; if(ds) slopes.push((anchors[j].y-anchors[i].y)/ds); }
+  const pitch=median(slopes.filter(v=>v>0));
+  let inl=[];
+  if(pitch){ const a0=median(anchors.map(r=>r.y-pitch*r.readSeq)); inl=anchors.filter(r=>Math.abs(r.y-(a0+pitch*r.readSeq))<0.4*pitch); }
+  for(const r of rows){
+    if(inl.length>=3){
+      // local fit on the nearest good anchors copes with perspective in a hand-held photo
+      const near=[...inl].sort((a,b)=>Math.abs(a.y-r.y)-Math.abs(b.y-r.y)).slice(0,5);
+      const ls=[]; for(let i=0;i<near.length;i++) for(let j=i+1;j<near.length;j++){ const ds=near[j].readSeq-near[i].readSeq; if(ds) ls.push((near[j].y-near[i].y)/ds); }
+      const lp=median(ls.filter(v=>v>0))||pitch, la=median(near.map(n=>n.y-lp*n.readSeq));
+      r.seq=Math.round((r.y-la)/lp);
+    }else r.seq=r.readSeq;
+  }
+  const good=rows.filter(r=>r.seq!=null&&r.seq>0&&r.seq<1000);
+  const fitOk=inl.length>=3&&inl.length>=0.6*anchors.length;
+
+  // "รวมเงิน": a money value that is not on any row and bigger than every row price
+  const onRow=new Set(rows.flatMap(r=>r.line));
+  const maxP=Math.max(0,...good.map(r=>r.price||0));
+  const lowest=Math.max(0,...good.map(r=>r.y)), pageSum=good.reduce((t,r)=>t+(r.price||0),0);
+  const totals=W.filter(x=>!onRow.has(x)&&x.cy>lowest).map(x=>({x,m:asMoney(x.t)})).filter(o=>o.m!=null&&o.m>maxP&&o.m>=100&&o.m>=pageSum);
+  const tot=totals.sort((a,b)=>b.m-a.m)[0];
+  // the last row of the manifest is the one right above the total
+  const lastSeq=tot?good.filter(r=>r.y<tot.x.cy).reduce((m,r)=>Math.max(m,r.seq),0)||null:null;
+  return {rows:good,total:tot?.m??null,lastSeq,fitOk};
+}
+
+function srcSize(){ return mode==='cam'?[video.videoWidth,video.videoHeight]:[still.naturalWidth,still.naturalHeight]; }
+function toScreen(b){
+  const [sw,sh]=srcSize(), W=ov.clientWidth, H=ov.clientHeight;
+  const k=mode==='cam'?Math.max(W/sw,H/sh):Math.min(W/sw,H/sh);
+  return {x:(W-sw*k)/2+b.x0*k, y:(H-sh*k)/2+b.y0*k, w:(b.x1-b.x0)*k, h:(b.y1-b.y0)*k};
+}
+
+// Draw the source turned by rot (0/90/180/270° clockwise) so the table reads upright, and map boxes back.
+function drawRotated(src,sw,sh,s,rot,filter,cv=grab){
+  const cx=cv===grab?gctx:(cv._cx ||= cv.getContext('2d',{willReadFrequently:true}));
+  const w=Math.round(sw*s), h=Math.round(sh*s), side=rot%180!==0;
+  cv.width=side?h:w; cv.height=side?w:h;
+  cx.setTransform(1,0,0,1,0,0); cx.filter=filter;
+  if(rot===90){ cx.translate(h,0); cx.rotate(Math.PI/2); }
+  else if(rot===270){ cx.translate(0,w); cx.rotate(-Math.PI/2); }
+  else if(rot===180){ cx.translate(w,h); cx.rotate(Math.PI); }
+  cx.drawImage(src,0,0,w,h); cx.setTransform(1,0,0,1,0,0);
+  const back=(x,y)=>rot===90?[y,h-x]:rot===270?[w-y,x]:rot===180?[w-x,h-y]:[x,y];
+  return b=>{ const p=[back(b.x0,b.y0),back(b.x1,b.y1)]; return {x0:Math.min(p[0][0],p[1][0])/s,y0:Math.min(p[0][1],p[1][1])/s,x1:Math.max(p[0][0],p[1][0])/s,y1:Math.max(p[0][1],p[1][1])/s}; };
+}
+
+// each preprocessing catches different digits, so passes rotate through them
+const FILTERS=['grayscale(1) contrast(1.35)','grayscale(1) contrast(2)','none'];
+const canv=[];
+async function readFrame(filter,rot,src,k=0){
+  const el=src?.el??(mode==='cam'?video:still), [sw,sh]=src?[src.w,src.h]:srcSize(); if(!sw) return null;
+  const s=Math.min(1,(mode==='cam'&&!src?1600:2400)/Math.max(sw,sh));   // never enlarge: upscaled photos read worse
+  const cv=k?(canv[k] ||= document.createElement('canvas')):grab;
+  const toSrc=drawRotated(el,sw,sh,s,rot,filter,cv);
+  const t0=performance.now();
+  const {data}=await recognizeQueued(cv);
+  frameMs=frameMs?frameMs*.7+(performance.now()-t0)*.3:performance.now()-t0; beat();
+  const words=(data.words||[]).filter(w=>w.confidence>=35).map(w=>({text:w.text,confidence:w.confidence,bbox:{...w.bbox}}));
+  // typical height of the digits read: tells whether the page is too far away to read
+  const dh=median(words.filter(w=>/\d{2}/.test(w.text)).map(w=>(w.bbox.y1-w.bbox.y0)/s));
+  return {rot,words,toSrc,tr:tableRows(words),pcs:words.filter(w=>asPostcode(w.text)).length,digitH:dh,scale:s,width:cv.width,height:cv.height};
+}
+// Boxes only — the live camera never writes to the session (a blurry or moving frame would spoil the data).
+function showBoxes(f,capRows){
+  const now=performance.now(); let fresh=false;
+  const rowOf=new Map(f.tr.rows.filter(r=>r.codeWord).map(r=>[r.codeWord,r]));
+  for(const w of f.words){
+    const code=asPostcode(w.text); if(!code||!BY_CODE[code]) continue;   // only remote-area codes get a box
+    const b=f.toSrc(w.bbox), r=rowOf.get(w), row=r?.seq??null;
+    if(capRows&&row!=null&&capRows.get(row)?.code&&capRows.get(row).code!==code) continue;   // one-off misread in this photo
+    const prev=dets.find(d=>d.code===code&&Math.abs(d.b.x0-b.x0)<200&&Math.abs(d.b.y0-b.y0)<200);
+    if(prev){ prev.target=b; prev.t=now; if(row!=null) prev.row=row; } else { dets.push({code,b:{...b},target:b,t:now,row}); }
+    if(!seen.has(code)){ seen.add(code); fresh=true; }
+  }
+  camFrame++; for(const d of dets) if(d.t===now) d.f=camFrame;
+  dets=dets.filter(d=>mode!=='cam'||camFrame-(d.f??camFrame)<=1);   // gone only after missing 2 readings in a row
+  if(fresh||(dets.length&&now-lastBeep>4000)){ if(dets.length){ beep(); lastBeep=now; } }
+  // which rows in view are already saved in the manifest being scanned
+  let saved=0, inView=0, conf=0;
+  if(mode==='cam'&&!capRows){
+    const A=activeSheet(cur());
+    const need=repairNeed(A);
+    live=f.tr.rows.map(r=>{ const k=r.seq+'|'+r.code, cnt=buf.get(k)?.n||0;
+      const st=need&&need.has(r.seq)?(cnt>0&&f.tr.fitOk?'conf':'need'):isSaved(A,r)?'ok':cnt>0&&f.tr.fitOk?'conf':'todo';
+      inView++; if(st==='ok') saved++; if(st==='conf') conf++; return {b:f.toSrc(r.codeWord.bbox),st,seq:r.seq,cnt:Math.min(cnt,CONF)}; });
+    liveT=now;
+  }
+  const n=dets.length, st=$('status');
+  st.textContent=mode!=='cam'?(n?`พบพื้นที่ห่างไกล ${n} จุด`:'ไม่พบรหัสพื้นที่ห่างไกล')
+    :asking?'รอคุณยืนยันใบ ↓'
+    :inView?(f.tr.fitOk?`ในภาพ ${inView} แถว · เก็บแล้ว ${saved}${conf?` · กำลังยืนยัน ${conf}`:''}${n?` · ⚑${n}`:''}`:`เห็น ${inView} แถว — ถือนิ่งๆ ให้เห็นเลขลำดับ`)
+    :f.pcs>=3&&f.digitH*f.scale<14?'ตัวเลขเล็กไป — ขยับเข้าใกล้ ให้เห็นแค่ครึ่งหน้า'
+    :f.pcs?'เห็นรหัสแต่ยังจับแถวไม่ได้ — ถือให้ตรง นิ่งๆ'
+    :`ยังอ่านตัวเลขไม่ได้ — ขยับเข้าใกล้ แสงพอ${f.rot?` (ลองหมุน ${f.rot}°)`:''}`;
+  st.className='chip'+(n?' hit':'');
+}
+const okSatang=v=>/\.(00|25|50|75)$/.test(v.toFixed(2));
+// One deliberate capture = 3 readings of the same sharp image, merged before anything is saved.
+function consolidate(frames){
+  const f=frames.at(-1), counts=new Map();
+  for(const r of f.tr.rows) counts.set(r.seq,(counts.get(r.seq)||0)+1);
+  const rows=f.tr.rows.map(r=>({...r,needsReview:!r.code||r.price==null||r.confidence<75||!f.tr.fitOk||counts.get(r.seq)>1||!!r.cropConflict||r.seq!==r.readSeq||(r.codeWord&&r.codeWord.text.trim()!==r.code)}));
+  // Keep one visible entry per sequence; a duplicate is explicitly flagged for review.
+  const unique=[...new Map(rows.map(r=>[r.seq,r])).values()].sort((a,b)=>a.seq-b.seq);
+  return {rows:unique,unsure:!f.tr.fitOk,total:f.tr.total,lastSeq:f.tr.lastSeq,totalConfirmed:false,map:new Map(unique.map(r=>[r.seq,r]))};
+}
+function checkCapture(cap){
+  if(!cap.rows.length) return 'ยังอ่านแถวไม่ได้ ลองหมุนภาพ หรือถ่ายใกล้ขึ้นให้เห็นเลขลำดับ รหัส และราคา';
+  return null;
+}
+function saveTo(sh,cap,quiet){
+  const S=cur();
+  for(const r of cap.rows){
+    const row=(sh.rows[r.seq] ||= {price:{},code:{},trk:{}});
+    // A reviewed still replaces machine readings; explicit manual edits remain authoritative.
+    if(r.price!=null){ row.price={[r.price.toFixed(2)]:1}; if(r.confirmed) delete row.manual; }
+    if(r.code) row.code={[r.code]:1};
+    if(r.serial!=null) row.trk={[r.serial]:1};
+    row.needsReview=!!r.needsReview;
+  }
+  if(cap.total!=null){ sh.totals={[cap.total.toFixed(2)]:1}; sh.totalNeedsReview=!cap.totalConfirmed; if(cap.totalConfirmed) sh.manualTotal=null; if(cap.lastSeq) sh.last={[cap.lastSeq]:1}; }
+  sh.done=false; S.active=sh.id; S.updated=Date.now(); checkDone(sh); persist(); refreshUI(); endRepairIfDone(sh);
+  if(!sh.done) toast('บันทึกแล้ว · ดูช่องที่ต้องตรวจในสรุป');
+}
+// is this row already saved in the manifest with the same code and charge?
+function isSaved(sh,r){ const row=sh.rows[r.seq]; if(!row||topVote(row.code)!==r.code) return false;
+  const ts=topVote(row.trk); if(ts!=null&&r.serial!=null&&Math.abs(r.serial-(+ts))>1) return false;
+  return row.manual!=null||(topVote(row.price)!=null&&!row.needsReview&&(r.price==null||+topVote(row.price)===r.price)); }
+// the saved row at this ลำดับ says something else: another postcode, or another item number
+function contradicts(sh,r){ const row=sh.rows[r.seq]; if(!row) return false;
+  const tc=topVote(row.code); if(tc&&tc!==r.code) return 'code';
+  const ts=topVote(row.trk); if(ts!=null&&r.serial!=null&&Math.abs(r.serial-(+ts))>1) return 'serial';
+  return false; }
+
+const CONF=3; let buf=new Map(), totBuf={}, asking=null;
+// Repair: the user picked a manifest to fix; its missing / unreadable rows are wanted, and a clear new reading
+// of those rows replaces the old one.
+let repair=null; try{ repair=JSON.parse(localStorage.getItem('ras-repair-v13-preview')); }catch(e){}
+const saveRepair=()=>{ try{ localStorage.setItem('ras-repair-v13-preview',JSON.stringify(repair)); }catch(e){} };
+function needOf(sh){ const a=sheetSummary(sh);
+  return new Set([...a.missing,...a.noPrice.map(r=>r.seq),...a.noCode.map(r=>r.seq),...a.unsure.map(r=>r.seq)].sort((x,y)=>x-y)); }
+function repairNeed(sh){ return repair&&repair.sess===curId&&repair.sheet===sh.id?needOf(sh):null; }
+function endRepairIfDone(sh){
+  if(!repair||repair.sheet!==sh.id) return;
+  const need=needOf(sh), a=sheetSummary(sh);
+  if(sh.done){ repair=null; saveRepair(); toast(`✓ ซ่อมใบที่ ${sh.no} เรียบร้อย${sh.done?' — ยอดตรงแล้ว':''}`,true); }
+}
+function startRepair(sh,how){
+  const S=cur(); S.active=sh.id; persist();
+  repair={sess:curId,sheet:sh.id}; saveRepair();
+  $('sheet').hidden=true; refreshUI();
+  if(how==='img') $('file').click();
+  else if(mode!=='cam') location.reload();              // back to the live camera; the repair is remembered
+  else toast('ถ่ายภาพแถวที่ต้องตรวจ ให้เห็นเลขลำดับ รหัส และราคา');
+}
+function flashSaved(){ const c=$('cov'); c.style.boxShadow='0 0 0 3px var(--green)'; setTimeout(()=>c.style.boxShadow='',500); }
+// Show what one capture read and let the user pick the manifest before anything is saved.
+function review(cap){
+  return new Promise(done=>{
+    const S=cur(), sg=suggest(S,cap.rows); let pick=sg.target;
+    const conflicts=(sh,r)=>{ const old=sh?.rows[r.seq]; return old&&((r.code&&topVote(old.code)&&r.code!==topVote(old.code))||(r.price!=null&&(old.manual??topVote(old.price))!=null&&r.price!==Number(old.manual??topVote(old.price)))); };
+    for(const r of cap.rows) if(conflicts(S.sheets.find(x=>x.id===pick),r)) r.needsReview=true;
+    const render=()=>{
+      const tgt=pick==='new'?null:S.sheets.find(x=>x.id===pick);
+      $('reviewIn').innerHTML=`<div class="hd"><b style="flex:1">ตรวจผลจากภาพนี้</b></div>
+        <small>อ่าน ${cap.rows.length} แถว · ${(cap.elapsed/1000).toFixed(1)} วินาที · อ่านซ้ำเฉพาะบริเวณ ${cap.retryRegions} จุด</small>
+        <img class="photoProof" src="${still.src}" alt="ภาพต้นฉบับสำหรับตรวจตัวเลข">
+        <p style="margin-top:10px">ช่องกรอบส้มต้องตรวจ · แตะเลขแถวเพื่อดูภาพบริเวณนั้น · แก้ตัวเลขได้ก่อนบันทึก</p>
+        <div class="reviewRows">${cap.rows.map(r=>`<div class="reviewRow ${r.needsReview?'warn':''}" data-row="${r.seq}">
+          <button data-focus="${r.seq}" aria-label="ดูภาพแถว ${r.seq}">${r.seq}</button>
+          <label>รหัสไปรษณีย์<input data-code="${r.seq}" inputmode="numeric" maxlength="5" value="${r.code||''}"></label>
+          <label>ค่าบริการ<input data-price="${r.seq}" inputmode="decimal" value="${r.price==null?'':r.price.toFixed(2)}"></label>
+          ${r.needsReview?'<small>ตรวจรหัสและราคาจากภาพ แล้วกดยืนยันแถวนี้</small>':''}<button style="grid-column:2 / 4" data-confirm="${r.seq}" ${r.needsReview?'':'hidden'}>ยืนยันแถวนี้</button></div>`).join('')}</div>
+        <div class="sec">ยอดรวมเงินท้ายใบ (ตรวจจากภาพก่อนยืนยัน)</div>
+        <input id="rvTotal" aria-label="ยอดรวมเงิน" inputmode="decimal" value="${cap.total==null?'':cap.total.toFixed(2)}" style="padding:10px;width:100%;font:inherit">
+        <label style="display:block;margin-top:8px"><input id="rvTotalConfirm" type="checkbox" ${cap.totalConfirmed?'checked':''}> ตรวจยอดรวมกับท้ายใบแล้ว</label>
+        <div class="sec">บันทึกลงใบ</div><select id="rvTarget" style="width:100%;padding:10px;font:inherit">${S.sheets.map(sh=>`<option value="${sh.id}" ${pick===sh.id?'selected':''}>ใบที่ ${sh.no}${sh.done?' · ครบแล้ว':''}</option>`).join('')}<option value="new" ${pick==='new'?'selected':''}>ใบใหม่</option></select>
+        <p id="rvError" role="alert" style="color:var(--amber);margin-top:10px"></p>
+        <div class="acts"><button class="pri" id="rvSave">บันทึกผล</button><button id="rvDrop">ปิดโดยไม่บันทึก</button></div>
+        <small>ยอดตรงอย่างเดียวไม่ได้ยืนยันว่ารหัสไปรษณีย์ถูกต้อง ควรตรวจเทียบเอกสาร โดยเฉพาะช่องที่เตือน</small>`;
+      const pullRow=(r)=>{
+        const code=$('reviewIn').querySelector('[data-code="'+r.seq+'"]').value.trim();
+        const money=$('reviewIn').querySelector('[data-price="'+r.seq+'"]').value.trim().replace(/,/g,'');
+        if(code&&!/^[1-9]\d{4}$/.test(code)) throw new Error('รหัสไปรษณีย์แถว '+r.seq+' ต้องเป็นตัวเลข 5 หลัก');
+        if(money&&!/^\d{1,6}(\.\d{1,2})?$/.test(money)) throw new Error('ราคาแถว '+r.seq+' ไม่ถูกต้อง');
+        r.code=code||null; r.price=money?Number(money):null;
+      };
+      $('reviewIn').querySelectorAll('[data-code],[data-price]').forEach(el=>el.oninput=()=>{
+        const seq=Number(el.dataset.code||el.dataset.price), r=cap.rows.find(x=>x.seq===seq); r.needsReview=true; r.edited=true;
+        const confirm=el.closest('.reviewRow').querySelector('[data-confirm]'); confirm.hidden=false; confirm.textContent='ยืนยันแถวนี้';
+        el.closest('.reviewRow').classList.add('warn');
+      });
+      $('reviewIn').querySelectorAll('[data-confirm]').forEach(el=>el.onclick=()=>{
+        const r=cap.rows.find(x=>x.seq===Number(el.dataset.confirm));
+        try{ pullRow(r); if(!r.code||r.price==null) throw new Error('กรอกรหัสและราคาให้ครบก่อนยืนยัน'); r.needsReview=false; r.confirmed=true; r.edited=false; el.textContent='✓ ตรวจแล้ว'; el.closest('.reviewRow').classList.remove('warn'); }
+        catch(e){ $('rvError').textContent=e.message; }
+      });
+      // Editing an initially clear row also requires explicit confirmation at save time.
+      $('reviewIn').querySelectorAll('[data-focus]').forEach(el=>el.onclick=()=>showRowProof(cap.rows.find(r=>r.seq===Number(el.dataset.focus))));
+      $('rvTarget').onchange=e=>pick=e.target.value;
+      $('rvTotal').oninput=()=>{ $('rvTotalConfirm').checked=false; };
+      $('rvSave').onclick=()=>{
+        try{
+          for(const r of cap.rows){ pullRow(r); if(r.edited) throw new Error('กรุณายืนยันแถว '+r.seq+' หลังแก้ตัวเลข'); }
+          const text=$('rvTotal').value.trim().replace(/,/g,'');
+          if(text&&!/^\d{1,6}(\.\d{1,2})?$/.test(text)) throw new Error('ยอดรวมเงินไม่ถูกต้อง');
+          cap.total=text?Number(text):null; cap.totalConfirmed=!!text&&$('rvTotalConfirm').checked;
+          const target=pick==='new'?null:S.sheets.find(x=>x.id===pick);
+          for(const r of cap.rows) if(conflicts(target,r)&&!r.confirmed) throw new Error('แถว '+r.seq+' ต่างจากข้อมูลเดิม กรุณาตรวจภาพแล้วยืนยันแถวนี้ หรือเลือกใบใหม่');
+          const sh=target||newSheet(S);
+          saveTo(sh,cap); $('review').hidden=true; done(sh);
+        }catch(e){ $('rvError').textContent=e.message; }
+      };
+      $('rvDrop').onclick=()=>{ $('review').hidden=true; done(null); };
+    }; render(); $('review').hidden=false;
+  });
+}
+function showRowProof(row){
+  const b=row.anchorWord?.bbox; if(!b||!currentSource) return;
+  const c=document.createElement('canvas'), scale=currentFrameScale||1;
+  const y=Math.max(0,(b.y0-(b.y1-b.y0)*1.5)/scale), h=Math.min(currentSource.h-y,(b.y1-b.y0)*4/scale);
+  c.width=currentSource.w; c.height=Math.ceil(h); c.getContext('2d').drawImage(currentSource.el,0,y,currentSource.w,h,0,0,c.width,c.height);
+  const img=$('reviewIn').querySelector('.photoProof'); img.src=c.toDataURL('image/jpeg',.92); img.alt='ภาพแถว '+row.seq; img.scrollIntoView({block:'nearest',behavior:'smooth'});
+  img.onclick=()=>{ img.src=still.src; img.alt='ภาพต้นฉบับ'; };
+}
+function retryRegions(f){
+  const ranges=[], rows=[...f.tr.rows].sort((a,b)=>a.y-b.y);
+  const add=(y0,y1)=>ranges.push({y0:Math.max(0,Math.floor(y0)),y1:Math.min(f.height,Math.ceil(y1))});
+  for(const r of rows){ const b=r.anchorWord.bbox,h=b.y1-b.y0;
+    if(r.confidence<75||r.price==null||!r.code) add(b.y0-h,b.y1+h);
+  }
+  for(let i=1;i<rows.length;i++){ const a=rows[i-1],b=rows[i]; if(b.seq-a.seq>1&&b.seq-a.seq<=5) add(a.anchorWord.bbox.y1,b.anchorWord.bbox.y0); }
+  ranges.sort((a,b)=>a.y0-b.y0); const merged=[];
+  for(const r of ranges){ const p=merged.at(-1); if(p&&r.y0<=p.y1) p.y1=Math.max(p.y1,r.y1); else merged.push({...r}); }
+  // Never fall back to repeated full-page passes; bound both work and crop height.
+  return merged.filter(r=>r.y1>r.y0&&r.y1-r.y0<f.height*.6).slice(0,4);
+}
+async function readCapture(src){
+  const begin=performance.now(); await getWorker();
+  $('status').textContent='กำลังอ่านภาพ 1 ครั้ง…';
+  const f=await readFrame('grayscale(1) contrast(1.2)',0,src), regions=retryRegions(f);
+  currentFrameScale=f.scale;
+  let words=[...f.words], completed=0;
+  for(const band of regions){
+    $('status').textContent='กำลังอ่านจุดไม่ชัด '+(++completed)+'/'+regions.length+'…';
+    const sy=band.y0/f.scale, sh=(band.y1-band.y0)/f.scale, k=Math.min(1.5,2600/src.w);
+    const c=document.createElement('canvas'); c.width=Math.round(src.w*k); c.height=Math.max(1,Math.round(sh*k));
+    const cx=c.getContext('2d'); cx.filter='grayscale(1) contrast(1.6)'; cx.drawImage(src.el,0,sy,src.w,sh,0,0,c.width,c.height);
+    try{
+      const {data}=await recognizeQueued(c);
+      const fresh=(data.words||[]).filter(w=>w.confidence>=35).map(w=>({text:w.text,confidence:w.confidence,bbox:{x0:w.bbox.x0/k*f.scale,x1:w.bbox.x1/k*f.scale,y0:(w.bbox.y0/k+sy)*f.scale,y1:(w.bbox.y1/k+sy)*f.scale}}));
+      // A crop must improve the number of complete, confident rows before replacing original evidence.
+      const candidate=words.filter(w=>{const cy=(w.bbox.y0+w.bbox.y1)/2;return cy<band.y0||cy>band.y1;}).concat(fresh);
+      const score=ws=>tableRows(ws).rows.reduce((n,r)=>n+(r.code?1:0)+(r.price!=null?1:0)+(r.confidence>=75?1:0),0);
+      if(score(candidate)>score(words)) words=candidate;
+    }catch(e){ if(e.message==='OCR_TIMEOUT') throw e; }
+  }
+  const parsed=tableRows(words);
+  for(const r of parsed.rows){
+    const previous=f.tr.rows.find(p=>p.seq===r.seq);
+    r.cropConflict=!!previous&&((previous.code&&r.code&&previous.code!==r.code)||(previous.price!=null&&r.price!=null&&previous.price!==r.price));
+  }
+  const final={...f,words,tr:parsed}, cap=consolidate([final]);
+  cap.elapsed=performance.now()-begin; cap.retryRegions=regions.length;
+  return {frames:[final],cap};
+}
+
+let lastSkipMsg=0, live=[], liveT=0, camFrame=0, frameMs=0;
+function beat(){ const b=$('beat'); if(!b) return; b.classList.remove('on'); void b.offsetWidth; b.classList.add('on'); }
+
+/* ================= Boxes + labels ================= */
+// false when most readings of that row name a different code (the box came from a one-off misread)
+function agrees(d){ if(d.row==null) return true; const row=cur().sheets.find(x=>x.no===d.no)?.rows[d.row]; const tc=row&&topVote(row.code); return !tc||tc===d.code; }
+function rr(x,y,w,h,r){ctx.beginPath();ctx.roundRect?ctx.roundRect(x,y,w,h,r):ctx.rect(x,y,w,h);}
+function draw(ts){
+  const dpr=devicePixelRatio||1, W=ov.clientWidth, H=ov.clientHeight;
+  if(ov.width!==W*dpr||ov.height!==H*dpr){ov.width=W*dpr;ov.height=H*dpr;}
+  ctx.setTransform(dpr,0,0,dpr,0,0); ctx.clearRect(0,0,W,H);
+  const now=performance.now();
+  const S=cur();
+  // green check = row already saved, white dashed = not saved yet (tap the shutter to save this page)
+  if(mode==='cam') for(const L of live){
+    const r=toScreen(L.b); r.x-=4; r.y-=3; r.w+=8; r.h+=6;
+    ctx.globalAlpha=1;
+    if(L.st==='ok'){ ctx.strokeStyle='#4ade80'; ctx.lineWidth=2; ctx.setLineDash([]); rr(r.x,r.y,r.w,r.h,4); ctx.stroke();
+      ctx.fillStyle='rgba(74,222,128,.18)'; ctx.fill(); ctx.fillStyle='#4ade80'; ctx.font='700 13px sans-serif'; ctx.fillText('✓',r.x-14,r.y+r.h-4); }
+    else if(L.st==='conf'){ ctx.strokeStyle='#facc15'; ctx.lineWidth=2; ctx.setLineDash([]); rr(r.x,r.y,r.w,r.h,4); ctx.stroke(); ctx.fillStyle='rgba(250,204,21,.15)'; ctx.fill();
+      ctx.fillStyle='#facc15'; ctx.font='700 12px sans-serif'; ctx.fillText(`${L.cnt}/${CONF}`,r.x+r.w+4,r.y+r.h-3); }
+    else if(L.st==='need'){ ctx.strokeStyle='#ff6b6b'; ctx.lineWidth=2.5; ctx.setLineDash([5,3]); rr(r.x,r.y,r.w,r.h,4); ctx.stroke(); ctx.setLineDash([]);
+      ctx.fillStyle='#ff6b6b'; ctx.font='700 12px sans-serif'; ctx.fillText('ซ่อม',r.x+r.w+4,r.y+r.h-3); }
+    else{ ctx.strokeStyle='rgba(255,255,255,.85)'; ctx.lineWidth=1.5; ctx.setLineDash([4,3]); rr(r.x,r.y,r.w,r.h,4); ctx.stroke(); ctx.setLineDash([]); }
+    ctx.globalAlpha=1;
+  }
+  for(const d of dets){
+    if(!agrees(d)) continue;
+    for(const k of ['x0','y0','x1','y1']) d.b[k]+=(d.target[k]-d.b[k])*.35;
+    const r=toScreen(d.b), p=6; r.x-=p; r.y-=p; r.w+=p*2; r.h+=p*2;
+    ctx.globalAlpha=mode==='cam'&&d.f!==camFrame?.5:1;
+    ctx.shadowColor='#ffb020'; ctx.shadowBlur=12+8*Math.sin(ts/180);
+    ctx.strokeStyle='#ffb020'; ctx.lineWidth=3; rr(r.x,r.y,r.w,r.h,6); ctx.stroke();
+    ctx.fillStyle='rgba(255,176,32,.15)'; ctx.fill(); ctx.shadowBlur=0;
+    const list=BY_CODE[d.code], e=list[0];
+    const t1=(d.row!=null?`${S.sheets.length>1&&d.no?`ใบ ${d.no} · `:''}ลำดับ ${d.row} · `:'')+`${e.office} · ${e.prov}`;
+    const t2=list.some(x=>x.area)?'⚠ '+list.map(x=>x.area.replace('เฉพาะ','')).join(' / '):'';
+    ctx.font='700 14px "IBM Plex Sans Thai",sans-serif';
+    let lw=ctx.measureText(t1).width;
+    if(t2){ ctx.font='500 12px "IBM Plex Sans Thai",sans-serif'; lw=Math.max(lw,ctx.measureText(t2).width); }
+    lw+=16; const lh=t2?42:26;
+    const lx=Math.min(Math.max(4,r.x),W-lw-4); let ly=r.y-lh-4; if(ly<60) ly=r.y+r.h+4;
+    ctx.fillStyle='rgba(0,0,0,.8)'; rr(lx,ly,lw,lh,6); ctx.fill();
+    ctx.fillStyle='#ffb020'; ctx.font='700 14px "IBM Plex Sans Thai",sans-serif'; ctx.fillText(t1,lx+8,ly+18);
+    if(t2){ ctx.fillStyle='#ffe2a8'; ctx.font='500 12px "IBM Plex Sans Thai",sans-serif'; ctx.fillText(t2,lx+8,ly+35); }
+    ctx.globalAlpha=1;
+  }
+  requestAnimationFrame(draw);
+}
+
+/* ================= Panel: session → manifests → rows ================= */
+let view={k:'sess'}, armed=null;   // k: sess | sheet (id) | hist | old (session id)
+function remoteItem(r,multi){ const e=BY_CODE[r.code];
+  return `<div class="item remote"><div><b>${multi?`ใบ ${r.no} · `:''}ลำดับ ${r.seq} · ${r.code}</b><small>${esc(e[0].office)} · ${esc(e[0].prov)}${e.some(x=>x.area)?' · ⚠ '+e.map(x=>x.area.replace('เฉพาะ','')).join(' / '):''}${r.suspect?'<br><span style="color:var(--red)">ราคาเท่าแถวปกติ — ยังไม่บวก +20 หรือรหัสอ่านผิด ตรวจอีกครั้ง</span>':''}</small></div><span class="r">฿${baht(r.price)}</span></div>`; }
+function sessionHTML(S,isCur){
+  const ss=sessionSummary(S), multi=ss.list.length>1;
+  const sheets=ss.list.map(({sh,a})=>{
+    const st=sh.done?'<span class="pill ok">✓ ครบ</span>':a.total!=null&&!a.missing.length&&!a.noPrice.length&&a.diff!==0?'<span class="pill bad">✗ ไม่ตรง</span>':`<span class="pill">${a.rows.length}${a.n?`/${a.n}`:''}</span>`;
+    return `<button class="item sheetrow" data-sheet="${sh.id}"><div style="flex:1;min-width:0"><b>ใบที่ ${sh.no}${isCur&&sh.id===S.active?' · กำลังสแกน':''}</b><small>฿${baht(a.sum)}${a.total!=null?` / ในใบ ฿${baht(a.total)}`:''}${a.remote.length?` · ⚑ ${a.remote.length}`:''}</small>${cellsHTML(a)}</div><span class="r">${st}</span></button>`; }).join('');
+  const rem=[...ss.remote.map(r=>remoteItem(r,multi)),
+    ...ss.loose.map(c=>{ const e=BY_CODE[c]; return `<div class="item remote"><div><b>${c}</b><small>${esc(e[0].office)} · ${esc(e[0].prov)} · ไม่ทราบลำดับ</small></div></div>`; })].join('');
+  const allDone=ss.list.length&&ss.done===ss.list.length;
+  return `<div class="hd"><input id="sName" value="${esc(S.name)}" aria-label="ชื่อชุด"><button id="sClose" aria-label="ปิด">✕</button></div>
+    ${isCur?'':`<div class="verdict wait" style="margin:0 0 12px">ชุดจากประวัติ · ${new Date(S.created).toLocaleString('th-TH')}</div>`}
+    <div class="tot"><div><small>ค่าบริการรวมทุกใบ</small><b>฿${baht(ss.sum)}</b><small>${ss.list.length} ใบ · ${ss.rows} แถว</small></div>
+      <div><small>ใบที่ครบแล้ว</small><b>${ss.done}/${ss.list.length}</b><small>ครบ = ทุกแถวมีราคา และยอดตรงกับ "รวมเงิน"</small></div></div>
+    ${allDone?'<div class="verdict ok">✓ ทุกใบครบและยอดตรง</div>':''}
+    <div class="sec">พื้นที่ห่างไกล / เกาะ (${ss.remote.length+ss.loose.length})</div>
+    <div class="list">${rem||'<div class="empty">ไม่พบ</div>'}</div>
+    <div class="sec">ใบนำส่ง (แตะเพื่อดู / แก้)</div>
+    <div class="list">${sheets}</div>
+    <div class="acts">${isCur
+      ?`<button id="sAdd">+ ใบใหม่</button><button class="pri" id="sNew">จบชุดนี้ เริ่มชุดใหม่</button><button id="sHist">ประวัติ (${sessions.filter(x=>!isEmpty(x)).length})</button><button class="danger" id="sDel">ล้างชุดนี้</button>`
+      :`<button class="pri" id="sResume">สแกนต่อในชุดนี้</button><button id="sHist">กลับไปประวัติ</button><button class="danger" id="sDel">ลบชุดนี้</button>`}</div>
+    <p style="margin-top:16px;font-size:12px;color:var(--muted)">เวอร์ชัน ${APP_VERSION} · <a href="../versions.html" style="color:var(--muted)">ดูทุกเวอร์ชัน</a></p>`;
+}
+function sheetHTML(S,sh){
+  const a=sheetSummary(sh);
+  let v;
+  if(!a.rows.length) v=`<div class="verdict wait">ยังไม่มีรายการ</div>`;
+  else if(sh.done) v=`<div class="verdict ok">✓ ครบ ${a.n} แถว ยอดตรง ฿${baht(a.sum)}</div>`;
+  else if(a.missing.length||a.noPrice.length) v=`<div class="verdict wait">ยังไม่ครบ${a.missing.length?` · ยังไม่ได้สแกนลำดับ ${a.missing.slice(0,40).join(', ')}${a.missing.length>40?' …':''}`:''}${a.noPrice.length?` · อ่านราคาไม่ได้ ลำดับ ${a.noPrice.map(r=>r.seq).join(', ')}`:''}<small>ส่องกล้องไปที่แถวเหล่านี้อีกครั้ง หรือแตะช่องเพื่อพิมพ์ราคาเอง</small></div>`;
+  else if(a.unsure.length||a.noCode.length||sh.totalNeedsReview) v=`<div class="verdict wait">ยังมีช่องที่ต้องตรวจจากภาพ หรือยอดรวมที่ยังไม่ยืนยัน<small>ถ่ายภาพเพื่อตรวจและยืนยัน หรือแก้ข้อมูลในช่องด้านล่าง</small></div>`;
+  else if(a.total==null) v=`<div class="verdict wait">ยังไม่เห็นยอด "รวมเงิน" — สแกนท้ายใบ หรือพิมพ์ยอดเองด้านบน</div>`;
+  else v=`<div class="verdict bad">✗ ไม่ตรง ต่างกัน ฿${baht(Math.abs(a.diff)/100)}<small>${a.diff>0?'ยอดในใบมากกว่าที่รวมได้':'ที่รวมได้มากกว่ายอดในใบ'} · แตะช่องที่ราคาผิดเพื่อแก้</small></div>`;
+  const by=new Map(a.rows.map(r=>[r.seq,r])); let grid='';
+  for(let i=1;i<=a.n;i++){ const r=by.get(i);
+    grid+=`<button class="gcell ${r&&BY_CODE[r.code]?'remote':''}" data-seq="${i}" style="${!r||r.price==null||r.unsure?'outline:1px dashed var(--red);':''}"><i>${i}</i>${r?.price!=null?baht(r.price)+(r.unsure?'?':'')+(r.manual?'✎':''):'—'}</button>`; }
+  const unsureNote=a.unsure.length?`<div class="verdict wait" style="margin-top:8px">อ่านไม่ชัด ตรวจด้วยตา: ${a.unsure.map(r=>`ลำดับ ${r.seq} (อ่านได้ ${baht(r.price)})`).join(', ')}</div>`:'';
+  const need=[...needOf(sh)], fixing=repair&&repair.sess===curId&&repair.sheet===sh.id;
+  const fix=!sh.done&&a.rows.length&&(need.length||a.total==null)?`<div class="fix"><b>${fixing?'กำลังซ่อมใบนี้':'ต้องซ่อม'}: ${need.length?`${need.length} แถว`:''}${need.length&&a.total==null?' + ':''}${a.total==null?'ยอดรวมเงิน':''}</b>
+    <small>${need.length?`ลำดับ ${need.slice(0,40).join(', ')}${need.length>40?' …':''}`:'สแกนหน้าสุดท้ายที่มี "รวมเงิน"'}</small>
+    <div class="ab"><button class="pri" id="fixCam">📷 สแกนซ่อมด้วยกล้อง</button><button id="fixImg">🖼 ถ่ายรูปซ่อม</button></div>
+    ${fixing?'<button id="fixStop" class="lnk">เลิกซ่อม</button>':'<small>หรือแตะช่องด้านล่างเพื่อพิมพ์ราคาเอง</small>'}</div>`:'';
+  return `<div class="hd"><button class="back" id="sBackS">‹ ชุด</button><b style="flex:1;font-size:18px">ใบที่ ${sh.no}</b><button id="sClose" aria-label="ปิด">✕</button></div>
+    <div class="tot"><div><small>รวมค่าบริการที่สแกนได้</small><b>฿${baht(a.sum)}</b><small>${a.rows.length}${a.n?`/${a.n}`:''} แถว</small></div>
+      <div><small>ยอด "รวมเงิน" ในใบ${sh.manualTotal!=null?' (พิมพ์เอง)':''}</small><input id="sTotal" inputmode="decimal" placeholder="—" value="${a.total!=null?baht(a.total):''}" aria-label="ยอดรวมเงินในใบ"><small>แก้ได้ถ้าอ่านผิด</small></div></div>
+    ${v}${unsureNote}${fix}
+    ${a.remote.length?`<div class="sec">พื้นที่ห่างไกล / เกาะ (${a.remote.length})</div><div class="list">${a.remote.map(r=>remoteItem({...r,no:sh.no},false)).join('')}</div>`:''}
+    ${a.n?`<div class="sec">ค่าบริการแต่ละลำดับ (แตะเพื่อแก้)</div><div class="grid">${grid}</div>`:''}
+    <div class="acts"><button class="pri" id="sUse">${sh.id===S.active?'กำลังสแกนใบนี้':'สแกนใบนี้ต่อ'}</button><button class="danger" id="sDelSheet">ลบใบนี้</button></div>`;
+}
+function historyHTML(){
+  const list=sessions.filter(s=>!isEmpty(s)||s.id===curId);
+  return `<div class="hd"><b style="flex:1;font-size:18px">ประวัติการสแกน</b><button id="sClose" aria-label="ปิด">✕</button></div>
+    <div class="list">${list.map(S=>{ const ss=sessionSummary(S);
+      const st=!ss.rows?'<span class="pill">ว่าง</span>':ss.done===ss.list.length?'<span class="pill ok">✓ ครบ</span>':`<span class="pill">ครบ ${ss.done}/${ss.list.length}</span>`;
+      return `<button class="item" data-id="${S.id}"><div><b>${esc(S.name)}${S.id===curId?' · ชุดปัจจุบัน':''}</b><small>${new Date(S.updated).toLocaleString('th-TH')} · ${ss.list.length} ใบ · ${ss.rows} แถว · ฿${baht(ss.sum)}${ss.remote.length+ss.loose.length?` · ⚑ ห่างไกล ${ss.remote.length+ss.loose.length}`:''}</small></div><span class="r">${st}</span></button>`; }).join('')||'<div class="empty">ยังไม่มีประวัติ</div>'}</div>
+    <div class="acts"><button id="sBack">กลับไปชุดปัจจุบัน</button></div>`;
+}
+function renderSheet(){
+  const el=$('sheetIn');
+  if(['sName','sTotal'].includes(document.activeElement?.id)) return;   // don't redraw under the keyboard
+  armed=null;
+  if(view.k==='hist'){ el.innerHTML=historyHTML();
+    el.querySelectorAll('.item[data-id]').forEach(b=>b.onclick=()=>{ view=b.dataset.id===curId?{k:'sess'}:{k:'old',id:b.dataset.id}; renderSheet(); });
+    $('sBack').onclick=()=>{ view={k:'sess'}; renderSheet(); };
+  }else if(view.k==='sheet'){
+    const S=cur(), sh=S.sheets.find(x=>x.id===view.id); if(!sh){ view={k:'sess'}; return renderSheet(); }
+    el.innerHTML=sheetHTML(S,sh);
+    $('sBackS').onclick=()=>{ view={k:'sess'}; renderSheet(); };
+    $('sTotal').onchange=e=>{ const v=parseFloat(e.target.value.replace(/,/g,'')); sh.manualTotal=isNaN(v)?null:v; sh.totalNeedsReview=false; sh.done=false; checkDone(sh); persist(); refreshUI(); };
+    $('sUse').onclick=()=>{ S.active=sh.id; persist(); refreshUI(); };
+    if($('fixCam')){ $('fixCam').onclick=()=>startRepair(sh,'cam'); $('fixImg').onclick=()=>startRepair(sh,'img'); }
+    if($('fixStop')) $('fixStop').onclick=()=>{ repair=null; saveRepair(); refreshUI(); };
+    el.querySelectorAll('.gcell').forEach(c=>c.onclick=()=>{
+      const k=c.dataset.seq, row=sh.rows[k];
+      const v=prompt(`ค่าบริการ ลำดับ ${k} (บาท)\nเว้นว่าง = ลบค่านี้แล้วให้สแกนใหม่`, row?.manual??(row?topVote(row.price)??'':''));
+      if(v===null) return;
+      if(v.trim()===''){ delete sh.rows[k]; }
+      else{ const n=parseFloat(v.replace(/,/g,'')); if(isNaN(n)) return; const row=(sh.rows[k] ||= {price:{},code:{},trk:{}}); row.manual=n; row.needsReview=true; toast('บันทึกราคาแล้ว · ถ่ายภาพเพื่อยืนยันรหัสและราคา'); }
+      sh.done=false; checkDone(sh); persist(); refreshUI(); endRepairIfDone(sh); });
+    const d=$('sDelSheet'); d.onclick=()=>{ if(armed!=='del'){ armed='del'; d.textContent='แตะอีกครั้งเพื่อยืนยัน'; return; }
+      S.sheets=S.sheets.filter(x=>x.id!==sh.id); if(!S.sheets.length) newSheet(S); if(S.active===sh.id) S.active=S.sheets.at(-1).id;
+      persist(); view={k:'sess'}; refreshUI(); renderSheet(); };
+  }else{
+    const isCur=view.k==='sess', S=isCur?cur():sessions.find(x=>x.id===view.id);
+    if(!S){ view={k:'hist'}; return renderSheet(); }
+    el.innerHTML=sessionHTML(S,isCur);
+    $('sName').onchange=e=>{ S.name=e.target.value.trim()||S.name; persist(); };
+    $('sHist').onclick=()=>{ view={k:'hist'}; renderSheet(); };
+    if(isCur) el.querySelectorAll('[data-sheet]').forEach(b=>b.onclick=()=>{ view={k:'sheet',id:b.dataset.sheet}; renderSheet(); });
+    const del=$('sDel');
+    del.onclick=()=>{ if(armed!=='del'){ armed='del'; del.textContent='แตะอีกครั้งเพื่อยืนยัน'; return; }
+      sessions=sessions.filter(x=>x.id!==S.id); if(S.id===curId) newSession(); else persist();
+      view=isCur?{k:'sess'}:{k:'hist'}; refreshUI(); renderSheet(); };
+    if(isCur){
+      $('sAdd').onclick=()=>{ const A=activeSheet(S); const n=sheetEmpty(A)?A:newSheet(S); persist(); toast(`สแกนใบที่ ${n.no}`); refreshUI(); };
+      $('sNew').onclick=()=>{ if(isEmpty(cur())) sessions=sessions.filter(x=>x.id!==curId); newSession(); dets=[]; seen=new Set(); refreshUI(); };
+    }else $('sResume').onclick=()=>{ if(isEmpty(cur())) sessions=sessions.filter(x=>x.id!==curId); curId=S.id; persist(); view={k:'sess'}; refreshUI(); renderSheet(); };
+  }
+  $('sClose').onclick=()=>$('sheet').hidden=true;
+}
+$('sessBtn').onclick=()=>{ view={k:'sess'}; $('sheet').hidden=false; renderSheet(); };
+$('cov').onclick=()=>{ view={k:'sheet',id:activeSheet(cur()).id}; $('sheet').hidden=false; renderSheet(); };
+$('sheet').onclick=e=>{ if(e.target.id==='sheet') $('sheet').hidden=true; };
+
+/* ================= Beep + vibrate on a find ================= */
+let actx=null;
+addEventListener('pointerdown',()=>{ try{ actx ||= new AudioContext(); actx.resume(); }catch(e){} },{once:true});
+function beep(){
+  try{ actx ||= new AudioContext(); const o=actx.createOscillator(), g=actx.createGain(); o.connect(g); g.connect(actx.destination);
+    o.frequency.value=1100; g.gain.setValueAtTime(.12,actx.currentTime); g.gain.exponentialRampToValueAtTime(.001,actx.currentTime+.2);
+    o.start(); o.stop(actx.currentTime+.21); }catch(e){}
+  try{ navigator.vibrate?.(80); }catch(e){}
+}
+
+/* ================= Camera ================= */
+let workers=[], workerPromise=null, ocrQueue=Promise.resolve();
+async function getWorker(){
+  if(worker) return worker;
+  if(!workerPromise){
+    let expired=false, timer;
+    const loading=(async()=>{
+      const w=await Tesseract.createWorker('eng',1);
+      if(expired){ await w.terminate(); throw new Error('OCR_TIMEOUT'); }
+      await w.setParameters({tessedit_pageseg_mode:'6'});
+      if(expired){ await w.terminate(); throw new Error('OCR_TIMEOUT'); }
+      worker=w; workers=[w]; return w;
+    })();
+    workerPromise=Promise.race([loading,new Promise((_,reject)=>{timer=setTimeout(()=>{expired=true;reject(new Error('OCR_TIMEOUT'));},45000);})])
+      .catch(e=>{workerPromise=null;throw e;}).finally(()=>clearTimeout(timer));
+  }
+  return workerPromise;
+}
+function recognizeQueued(canvas){
+  const task=ocrQueue.then(async()=>{
+    const w=await getWorker(); let timer;
+    try{ return await Promise.race([w.recognize(canvas),new Promise((_,reject)=>{ timer=setTimeout(()=>reject(new Error('OCR_TIMEOUT')),45000); })]); }
+    catch(e){ worker=null; workers=[]; workerPromise=null; await w.terminate().catch(()=>{}); throw e; }
+    finally{ clearTimeout(timer); }
+  });
+  ocrQueue=task.catch(()=>{}); return task;
+}
+let busy=false, camTrack=null, currentSource=null, currentFrameScale=1;
+function setBusy(value){
+  busy=value;
+  for(const id of ['shutter','pick','cam','rotatePhoto','retryPhoto','sessBtn']) $(id).disabled=value;
+  $('shutter').disabled=value||!camTrack||mode!=='cam';
+}
+function stopCamera(){ video.srcObject?.getTracks().forEach(t=>t.stop()); video.srcObject=null; camTrack=null; }
+async function startCam(){
+  stopCamera(); mode='cam'; video.hidden=false; still.hidden=true; dets=[]; live=[];
+  $('rotatePhoto').hidden=true; $('retryPhoto').hidden=true; $('cam').hidden=true; $('strip').hidden=true; document.body.classList.remove('hasShots');
+  $('shutter').hidden=false; $('msg').hidden=true; $('status').textContent='กำลังเปิดกล้อง…'; setBusy(true);
+  try{
+    const stream=await navigator.mediaDevices.getUserMedia({audio:false,video:{facingMode:{ideal:'environment'},width:{ideal:1920},height:{ideal:1080}}});
+    video.srcObject=stream; await video.play();
+    const track=camTrack=stream.getVideoTracks()[0], caps=track.getCapabilities?.()||{};
+    $('torch').hidden=!caps.torch;
+    if(caps.torch){ let on=false; $('torch').onclick=async()=>{ try{ await track.applyConstraints({advanced:[{torch:!on}]}); on=!on; $('torch').classList.toggle('on',on); }catch(e){ toast('เปิดไฟฉายไม่ได้'); } }; }
+    if(caps.focusMode?.includes('continuous')) await track.applyConstraints({advanced:[{focusMode:'continuous'}]}).catch(()=>{});
+    $('status').textContent='จัดภาพให้ตรง เห็นเลขลำดับ รหัส และราคา แล้วกดถ่าย';
+  }catch(e){
+    console.warn('Camera start failed:',e.name,e.message);
+    stopCamera(); $('cam').hidden=false; $('torch').hidden=true; $('status').textContent='เลือกรูปเอกสารเพื่อเริ่ม'; $('msg').hidden=false;
+    $('msg').innerHTML='เปิดกล้องไม่ได้ · ใช้ปุ่ม 🖼 เลือกรูปได้<br>กล้องต้องใช้ HTTPS หรือ localhost และอนุญาตการเข้าถึง';
+  }finally{ setBusy(false); refreshUI(); }
+  // Warm up one reader; no continuous full-frame OCR while the user frames a page.
+  getWorker().catch(()=>{ $('status').textContent='โหลดตัวอ่านไม่สำเร็จ · ตรวจอินเทอร์เน็ตแล้วลองอ่านอีกครั้ง'; });
+}
+
+// Tap on the live view to focus; use the visible shutter to capture.
+async function focusAt(x,y){
+  const t=camTrack; if(!t) return; const caps=t.getCapabilities?.()||{};
+  try{
+    if('pointsOfInterest' in caps) await t.applyConstraints({advanced:[{pointsOfInterest:[{x:x/innerWidth,y:y/innerHeight}]}]});
+    if(caps.focusMode?.includes('single-shot')) await t.applyConstraints({advanced:[{focusMode:'single-shot'}]});
+    else if(caps.focusMode?.includes('continuous')) await t.applyConstraints({advanced:[{focusMode:'continuous'}]});
+  }catch(e){}
+}
+function ring(x,y,cls){ const r=$('ring'); r.style.left=x+'px'; r.style.top=y+'px'; r.className=''; void r.offsetWidth; r.className=cls; r.hidden=false; }
+async function grabStill(){
+  // Android Chrome can take a real photo; elsewhere use the current video frame at full size
+  let timer, photoUrl;
+  try{ if(window.ImageCapture&&camTrack){
+    const b=await Promise.race([new ImageCapture(camTrack).takePhoto(),new Promise((_,reject)=>{timer=setTimeout(()=>reject(new Error('PHOTO_TIMEOUT')),4000);})]);
+    const img=new Image(); photoUrl=URL.createObjectURL(b); img.src=photoUrl; await img.decode(); return {el:img,w:img.naturalWidth,h:img.naturalHeight};
+  } }catch(e){ if(photoUrl) URL.revokeObjectURL(photoUrl); }finally{clearTimeout(timer);}
+  if(!video.videoWidth||!video.videoHeight) throw new Error('CAMERA_NOT_READY');
+  const c=document.createElement('canvas'); c.width=video.videoWidth; c.height=video.videoHeight; c.getContext('2d').drawImage(video,0,0);
+  return {el:c,w:c.width,h:c.height};
+}
+video.addEventListener('pointerdown',e=>{ if(mode==='cam'&&!busy){ ring(e.clientX,e.clientY,'focus'); focusAt(e.clientX,e.clientY); setTimeout(()=>$('ring').hidden=true,800); } });
+video.addEventListener('contextmenu',e=>e.preventDefault());
+$('shutter').onclick=async()=>{
+  if(busy||!camTrack) return; setBusy(true); $('status').textContent='กำลังถ่ายภาพ…';
+  try{
+    const src=await grabStill();
+    const c=document.createElement('canvas'); c.width=src.w; c.height=src.h; c.getContext('2d').drawImage(src.el,0,0);
+    if(src.el instanceof Image&&src.el.src.startsWith('blob:')) URL.revokeObjectURL(src.el.src);
+    const blob=await new Promise(r=>c.toBlob(r,'image/jpeg',.95)); if(!blob) throw new Error('CAPTURE_FAILED');
+    await processPhotos([URL.createObjectURL(blob)]);
+  }catch(e){ toast('ถ่ายภาพไม่สำเร็จ ลองอีกครั้ง'); }
+  finally{ setBusy(false); }
+};
+
+
+/* ================= Several photos ================= */
+// read them one after another, keep each photo's boxes, tap a thumbnail to view it
+let shots=[], curShot=-1;
+function renderStrip(){
+  $('strip').innerHTML=shots.map((p,i)=>`<button class="${i===curShot?'sel':''} ${p.dets?.length?'has':''}" data-i="${i}" aria-label="รูปที่ ${i+1}"><img src="${p.url}" alt="">${p.dets?(p.dets.length?`<span>${p.dets.length}</span>`:''):'<span class="wait">…</span>'}</button>`).join('');
+  $('strip').querySelectorAll('button').forEach(b=>b.onclick=()=>{ if(!busy) showShot(+b.dataset.i); });
+}
+function statusLine(){
+  const found=shots.filter(p=>p.dets?.length).length, all=shots.reduce((n,p)=>n+(p.dets?.length||0),0), done=shots.filter(p=>p.dets).length;
+  const st=$('status');
+  st.textContent=`รูป ${curShot+1}/${shots.length} · `+(done<shots.length?`กำลังอ่าน ${done}/${shots.length}…`:all?`พบ ${all} จุด ใน ${found} รูป`:'ไม่พบรหัสพื้นที่ห่างไกล');
+  st.className='chip'+(all?' hit':'');
+}
+async function showShot(i){
+  curShot=i; const p=shots[i];
+  still.src=p.url; await still.decode().catch(()=>{});
+  dets=p.dets?p.dets.map(d=>({...d,b:{...d.target}})):[];
+  renderStrip(); statusLine();
+}
+$('pick').onclick=()=>{ if(!busy) $('file').click(); };
+async function loadPhoto(url){ const img=new Image(); img.src=url; await img.decode(); return {el:img,w:img.naturalWidth,h:img.naturalHeight}; }
+async function scanPhoto(src){
+  currentSource=src; dets=[]; seen=new Set();
+  $('retryPhoto').hidden=false; $('rotatePhoto').hidden=false;
+  try{
+    const {frames,cap}=await readCapture(src);
+    for(const f of frames) showBoxes(f,cap.map);
+    const bad=checkCapture(cap);
+    if(bad){ $('status').textContent=bad; toast(bad); return; }
+    await review(cap);
+    $('status').textContent='อ่าน '+cap.rows.length+' แถว ใน '+(cap.elapsed/1000).toFixed(1)+' วินาที · ถ่ายหน้าถัดไปหรือกลับไปดูชุด';
+  }catch(e){ $('status').textContent=e.message==='OCR_TIMEOUT'?'อ่านนานเกินไป · ลองถ่ายใกล้ขึ้น หรืออ่านภาพนี้อีกครั้ง':'อ่านไม่สำเร็จ · ตรวจอินเทอร์เน็ต แล้วกดอ่านภาพนี้อีกครั้ง'; }
+}
+async function processPhotos(urls){
+  setBusy(true); stopCamera(); mode='img'; video.hidden=true; still.hidden=false; $('msg').hidden=true; $('torch').hidden=true;
+  $('shutter').hidden=true; $('cam').hidden=false; $('strip').hidden=false; document.body.classList.add('hasShots');
+  const start=shots.length; shots.push(...urls.map(url=>({url,dets:null})));
+  try{
+    for(let i=start;i<shots.length;i++){
+      const src=await loadPhoto(shots[i].url); await showShot(i); await scanPhoto(src);
+      shots[i].dets=dets.map(d=>({...d})); renderStrip();
+    }
+  }catch(e){ $('status').textContent='เปิดรูปนี้ไม่ได้ · ลองไฟล์ JPG หรือ PNG'; }
+  finally{ setBusy(false); refreshUI(); }
+}
+$('file').onchange=async()=>{ const files=[...$('file').files]; $('file').value=''; if(!files.length||busy) return; await processPhotos(files.map(f=>URL.createObjectURL(f))); };
+$('retryPhoto').onclick=async()=>{
+  if(busy||curShot<0) return; setBusy(true);
+  try{ await scanPhoto(await loadPhoto(shots[curShot].url)); shots[curShot].dets=dets.map(d=>({...d})); renderStrip(); }
+  catch(e){ toast('เปิดภาพไม่ได้'); } finally{ setBusy(false); }
+};
+$('rotatePhoto').onclick=async()=>{
+  if(busy||curShot<0) return; setBusy(true);
+  try{
+    const src=await loadPhoto(shots[curShot].url), c=document.createElement('canvas'); c.width=src.h; c.height=src.w;
+    const cx=c.getContext('2d'); cx.translate(src.h,0); cx.rotate(Math.PI/2); cx.drawImage(src.el,0,0);
+    const blob=await new Promise(r=>c.toBlob(r,'image/jpeg',.95)); if(!blob) throw new Error('ROTATE_FAILED');
+    URL.revokeObjectURL(shots[curShot].url); shots[curShot].url=URL.createObjectURL(blob); shots[curShot].dets=null;
+    await showShot(curShot); await scanPhoto(await loadPhoto(shots[curShot].url)); shots[curShot].dets=dets.map(d=>({...d})); renderStrip();
+  }catch(e){ toast('หมุนภาพไม่สำเร็จ'); } finally{ setBusy(false); }
+};
+$('cam').onclick=()=>{ if(!busy) startCam(); };
+
+
+refreshUI();
+requestAnimationFrame(draw);
+startCam();
+</script>
+</body>
+</html>
