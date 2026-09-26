@@ -64,14 +64,29 @@ button.on{border-color:var(--amber);color:var(--amber)}
 .pill{font-size:12px;padding:2px 8px;border-radius:99px;border:1px solid currentColor;white-space:nowrap}
 .pill.ok{color:var(--green)} .pill.bad{color:var(--red)} .pill.am{color:var(--amber)}
 .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(96px,1fr));gap:4px;font-size:13px;font-variant-numeric:tabular-nums}
-.grid span{padding:6px 8px;border-radius:8px;background:var(--row);display:flex;justify-content:space-between;gap:6px}
-.grid span.remote{background:rgba(255,176,32,.18);color:var(--amber)}
-.grid span i{font-style:normal;color:var(--muted)}
+.grid .gcell{padding:6px 8px;border-radius:8px;background:var(--row);border:0;display:flex;justify-content:space-between;gap:6px;font-size:13px;font-variant-numeric:tabular-nums}
+.grid .gcell.remote{background:rgba(255,176,32,.18);color:var(--amber)}
+.grid .gcell i{font-style:normal;color:var(--muted)}
 .acts{display:flex;gap:8px;margin-top:18px;flex-wrap:wrap}
 .acts button{flex:1;min-width:140px;border-radius:12px;padding:12px}
 .acts .pri{background:var(--amber);color:#000;border-color:var(--amber);font-weight:700}
 .acts .danger{color:var(--red);border-color:rgba(255,107,107,.5)}
 .empty{color:var(--muted);font-size:14px;padding:12px 0}
+#cov{position:fixed;left:10px;right:10px;bottom:calc(env(safe-area-inset-bottom,0px) + 12px);max-width:560px;margin:0 auto;padding:10px 12px;border-radius:14px;background:rgba(0,0,0,.72);border:1px solid rgba(255,255,255,.2);text-align:left;display:block;width:auto;font-size:13px}
+#cov.up{bottom:calc(env(safe-area-inset-bottom,0px) + 112px)}
+#cov.done{border-color:var(--green)}
+#cov .t{display:flex;gap:8px;align-items:baseline;flex-wrap:wrap;font-variant-numeric:tabular-nums}
+#cov .t b{font-size:14px}
+#cov .t .m{color:var(--muted)}
+.cells{display:flex;flex-wrap:wrap;gap:2px;margin-top:6px}
+.cells i{width:9px;height:9px;border-radius:2px;background:rgba(255,255,255,.14)}
+.cells i.ok{background:var(--green)} .cells i.rm{background:var(--amber)} .cells i.q{background:transparent;outline:1px solid var(--red)}
+.cells.big{gap:3px} .cells.big i{width:14px;height:14px;border-radius:3px}
+#toast{position:fixed;left:50%;top:calc(env(safe-area-inset-top,0px) + 70px);transform:translateX(-50%);max-width:92%;padding:10px 16px;border-radius:12px;background:#fff;color:#000;font-weight:700;font-size:15px;z-index:6;text-align:center;box-shadow:0 6px 30px rgba(0,0,0,.5)}
+#toast.ok{background:var(--green)}
+.sheetrow .cells{margin-top:6px}
+.back{border-radius:10px;padding:6px 10px;font-size:13px}
+
 </style>
 </head>
 <body>
@@ -88,6 +103,8 @@ button.on{border-color:var(--amber);color:var(--amber)}
 </div>
 <div id="msg" hidden></div>
 <div id="strip" hidden></div>
+<button id="cov" hidden aria-label="ดูความคืบหน้าของใบนำส่ง"></button>
+<div id="toast" hidden></div>
 <div id="sheet" hidden><div class="in" id="sheetIn"></div></div>
 <input type="file" id="file" accept="image/*" multiple hidden>
 
@@ -138,49 +155,113 @@ const video=$('video'), still=$('still'), ov=$('ov'), ctx=ov.getContext('2d');
 const grab=document.createElement('canvas'), gctx=grab.getContext('2d',{willReadFrequently:true});
 let mode='cam', worker=null, dets=[], seen=new Set(), lastBeep=0;
 
-/* ================= Sessions (ชุดเอกสาร) — kept on this phone ================= */
-// session = {id, name, created, updated, rows:{seq:{price:{v:n}, code:{v:n}}}, totals:{v:n}, manualTotal, loose:{code:n}}
-const KEY='ras-sessions-v1';
+/* ================= Sessions → manifests (ใบนำส่ง) — kept on this phone ================= */
+// session  = {id, name, created, updated, sheets:[sheet], active:sheetId, loose:{code:n}}
+// sheet    = {id, no, rows:{seq:{price:{v:n}, code:{v:n}, trk:{serial:n}, manual}}, totals:{v:n}, manualTotal, last:{seq:n}, done}
+// A manifest's rows are keyed by its own ลำดับ, so pages 1 and 2 of one manifest join up, and a new manifest
+// (which starts again at ลำดับ 1) is told apart by its postcodes and item numbers.
+const KEY='ras-sessions-v2';
 let sessions=[], curId=null;
-try{ const s=JSON.parse(localStorage.getItem(KEY)); if(s?.list){ sessions=s.list; curId=s.cur; } }catch(e){}
+const uid=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,6);
+const newSheet=S=>{ const sh={id:uid(),no:(S.sheets.reduce((m,x)=>Math.max(m,x.no),0))+1,rows:{},totals:{},manualTotal:null,last:{},done:false}; S.sheets.push(sh); S.active=sh.id; return sh; };
+try{
+  const v2=JSON.parse(localStorage.getItem(KEY));
+  if(v2?.list){ sessions=v2.list; curId=v2.cur; }
+  else{ const v1=JSON.parse(localStorage.getItem('ras-sessions-v1'));   // carry over sessions from the first version
+    if(v1?.list){ sessions=v1.list.map(o=>({id:o.id,name:o.name,created:o.created,updated:o.updated,loose:o.loose||{},active:'a',
+      sheets:[{id:'a',no:1,rows:Object.fromEntries(Object.entries(o.rows).map(([k,r])=>[k,{price:r.price,code:r.code,trk:{}}])),totals:o.totals||{},manualTotal:o.manualTotal??null,last:{},done:false}]})); curId=v1.cur; } }
+}catch(e){}
 function persist(){ try{ localStorage.setItem(KEY,JSON.stringify({list:sessions,cur:curId})); }catch(e){} }
 function newSession(){
   const d=new Date();
-  const s={id:String(Date.now()),name:`ชุด ${d.getDate()}/${d.getMonth()+1} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`,
-    created:Date.now(),updated:Date.now(),rows:{},totals:{},manualTotal:null,loose:{}};
-  sessions.unshift(s); curId=s.id; persist(); return s;
+  const S={id:uid(),name:`ชุด ${d.getDate()}/${d.getMonth()+1} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`,
+    created:Date.now(),updated:Date.now(),sheets:[],active:null,loose:{}};
+  newSheet(S); sessions.unshift(S); curId=S.id; persist(); return S;
 }
 const cur=()=>sessions.find(s=>s.id===curId)||newSession();
-const isEmpty=s=>!Object.keys(s.rows).length&&!Object.keys(s.loose).length&&!Object.keys(s.totals).length&&s.manualTotal==null;
+const activeSheet=S=>S.sheets.find(x=>x.id===S.active)||S.sheets.at(-1)||newSheet(S);
+const sheetEmpty=sh=>!Object.keys(sh.rows).length&&!Object.keys(sh.totals).length&&sh.manualTotal==null;
+const isEmpty=S=>S.sheets.every(sheetEmpty)&&!Object.keys(S.loose).length;
 const topVote=v=>{ let b=null,n=0; for(const k in v||{}) if(v[k]>n){n=v[k];b=k;} return b; };
 const inc=(o,k,w=1)=>{ o[k]=(o[k]||0)+w; };
 
-function summary(s){
-  const rows=Object.entries(s.rows).map(([seq,r])=>{
-    const k=topVote(r.price); let price=k!=null?+k:null, unsure=false;
-    if(k!=null&&!/\.(00|25|50|75)$/.test(k)){ price=Math.round(price*4)/4; unsure=true; }   // odd satang: misread, round and flag
-    return {seq:+seq,price,unsure,code:topVote(r.code)};
+function sheetSummary(sh){
+  const rows=Object.entries(sh.rows).map(([seq,r])=>{
+    let price=null, unsure=false;
+    if(r.manual!=null) price=r.manual;
+    else{ const k=topVote(r.price); if(k!=null){ price=+k; if(!/\.(00|25|50|75)$/.test(k)){ price=Math.round(price*4)/4; unsure=true; } } }   // odd satang: misread, round and flag
+    return {seq:+seq,price,unsure,code:topVote(r.code),manual:r.manual!=null};
   }).sort((a,b)=>a.seq-b.seq);
   const cents=rows.reduce((t,r)=>t+(r.price!=null?Math.round(r.price*100):0),0);
-  const maxSeq=rows.length?rows.at(-1).seq:0;
-  const have=new Set(rows.map(r=>r.seq)); const missing=[]; for(let i=1;i<=maxSeq;i++) if(!have.has(i)) missing.push(i);
-  const total=s.manualTotal!=null?s.manualTotal:(topVote(s.totals)!=null?+topVote(s.totals):null);
+  const lastSeq=topVote(sh.last)!=null?+topVote(sh.last):null;          // last row = the one just above "รวมเงิน"
+  const n=Math.max(lastSeq||0,rows.length?rows.at(-1).seq:0);
+  const have=new Set(rows.map(r=>r.seq)); const missing=[]; for(let i=1;i<=n;i++) if(!have.has(i)) missing.push(i);
+  const total=sh.manualTotal!=null?sh.manualTotal:(topVote(sh.totals)!=null?+topVote(sh.totals):null);
   const diff=total==null?null:Math.round(total*100)-cents;
   const remote=rows.filter(r=>BY_CODE[r.code]);
   // most common price among normal rows: a remote row at that price may be a misread code or a missing +20
   const pc={}; rows.filter(r=>!BY_CODE[r.code]&&r.price!=null).forEach(r=>inc(pc,r.price.toFixed(2)));
   const usual=topVote(pc)!=null?+topVote(pc):null;
   remote.forEach(r=>r.suspect=usual!=null&&r.price!=null&&r.price<=usual);
-  const rowCodes=new Set(rows.map(r=>r.code));
-  const loose=Object.keys(s.loose).filter(c=>!rowCodes.has(c));
-  return {rows,sum:cents/100,maxSeq,missing,total,diff,remote,loose,noPrice:rows.filter(r=>r.price==null),unsure:rows.filter(r=>r.unsure)};
+  const noPrice=rows.filter(r=>r.price==null), unsure=rows.filter(r=>r.unsure);
+  const complete=total!=null&&n>0&&!missing.length&&!noPrice.length&&diff===0;
+  return {rows,sum:cents/100,n,missing,total,diff,remote,noPrice,unsure,complete};
 }
-function refreshSessBtn(){
-  const a=summary(cur()), b=$('sessBtn');
-  let t=`ชุด · ${a.rows.length} แถว`; if(a.rows.length) t+=` · ฿${baht(a.sum)}`;
-  if(a.remote.length+a.loose.length) t+=` · ⚑${a.remote.length+a.loose.length}`;
-  b.className=''; if(a.total!=null&&a.rows.length){ if(a.diff===0){ b.className='ok'; t+=' ✓'; } else { b.className='bad'; t+=' ✗'; } }
-  b.textContent=t;
+function sessionSummary(S){
+  const list=S.sheets.map(sh=>({sh,a:sheetSummary(sh)})).filter(x=>!sheetEmpty(x.sh)||x.sh.id===S.active);
+  const sum=list.reduce((t,x)=>t+Math.round(x.a.sum*100),0)/100;
+  const remote=list.flatMap(x=>x.a.remote.map(r=>({...r,no:x.sh.no})));
+  const rowCodes=new Set(list.flatMap(x=>x.a.rows.map(r=>r.code)));
+  const loose=Object.keys(S.loose).filter(c=>!rowCodes.has(c));
+  return {list,sum,remote,loose,done:list.filter(x=>x.sh.done).length,rows:list.reduce((t,x)=>t+x.a.rows.length,0)};
+}
+
+/* ---- which manifest does a frame belong to? ---- */
+function routeScore(sh,rows){
+  let m=0,c=0;
+  const withTrk=Object.entries(sh.rows).map(([k,r])=>({seq:+k,serial:topVote(r.trk)})).filter(x=>x.serial!=null);
+  for(const r of rows){
+    const row=sh.rows[r.seq];
+    if(row&&r.code){ const tc=topVote(row.code); if(tc===r.code) m++; else if(tc&&row.code[tc]>=2) c++; }
+    if(r.serial!=null&&withTrk.length){
+      // item numbers run on with ลำดับ inside one manifest: serial(k) - serial(j) ≈ k - j
+      const j=withTrk.reduce((b,x)=>Math.abs(x.seq-r.seq)<Math.abs(b.seq-r.seq)?x:b);
+      if(j.seq!==r.seq||!row){ if(Math.abs((r.serial-(+j.serial))-(r.seq-j.seq))<=2) m++; else c++; }
+    }
+  }
+  return {m,c};
+}
+function route(S,rows){
+  const A=activeSheet(S);
+  if(!rows.length) return {sh:A};
+  let best=null;
+  for(const sh of S.sheets){ const sc=routeScore(sh,rows); if(sc.m>=2&&sc.m>sc.c&&(!best||sc.m>best.m)) best={sh,...sc}; }
+  if(best){ if(best.sh.done) return {sh:best.sh,skip:true}; if(best.sh.id!==A.id){ S.active=best.sh.id; toast(`สลับไปใบที่ ${best.sh.no}`); } return {sh:best.sh}; }
+  const sa=routeScore(A,rows);
+  if(sheetEmpty(A)) return {sh:A};
+  if(A.done||sa.c>=2){ if(rows.length<2) return {sh:null}; const n=newSheet(S); toast(`เริ่มใบที่ ${n.no}`); return {sh:n}; }
+  return {sh:A};
+}
+
+/* ---- UI: progress bar over the camera + toast ---- */
+let toastT=null;
+function toast(msg,ok){ const t=$('toast'); t.textContent=msg; t.className=ok?'ok':''; t.hidden=false; clearTimeout(toastT); toastT=setTimeout(()=>t.hidden=true,2600); }
+const cellsHTML=(a,big)=>{ if(!a.n) return ''; const by=new Map(a.rows.map(r=>[r.seq,r])); let h='';
+  for(let i=1;i<=a.n;i++){ const r=by.get(i); h+=`<i class="${!r?'':r.price==null||r.unsure?'q':BY_CODE[r.code]?'rm':'ok'}" title="${i}"></i>`; }
+  return `<div class="cells${big?' big':''}">${h}</div>`; };
+function refreshUI(){
+  const S=cur(), A=activeSheet(S), a=sheetSummary(A), ss=sessionSummary(S), b=$('sessBtn');
+  b.textContent=`ชุด · ${ss.list.length} ใบ${ss.done?` (ครบ ${ss.done})`:''}${ss.remote.length+ss.loose.length?` · ⚑${ss.remote.length+ss.loose.length}`:''}`;
+  b.className=ss.list.length&&ss.done===ss.list.length?'ok':'';
+  const c=$('cov'); c.hidden=false; c.classList.toggle('up',mode==='img'); c.classList.toggle('done',A.done);
+  const state=A.done?'<b style="color:var(--green)">✓ ครบ ยอดตรง</b>':a.total!=null&&a.diff!==0&&!a.missing.length&&!a.noPrice.length?`<b style="color:var(--red)">✗ ต่าง ฿${baht(Math.abs(a.diff)/100)}</b>`:'';
+  c.innerHTML=`<div class="t"><b>ใบที่ ${A.no}</b><span>${a.rows.length}${a.n?`/${a.n}`:''} แถว · ฿${baht(a.sum)}</span>${a.total!=null?`<span class="m">ในใบ ฿${baht(a.total)}</span>`:'<span class="m">ยังไม่เห็นยอดรวม</span>'}${state}</div>${cellsHTML(a)}`;
+  if(!$('sheet').hidden) renderSheet();
+}
+function checkDone(sh){
+  if(sh.done) return;
+  const a=sheetSummary(sh);
+  if(a.complete){ sh.done=true; persist(); beep(); setTimeout(beep,250); toast(`✓ ใบที่ ${sh.no} ครบ ${a.n} แถว ยอดตรง ฿${baht(a.sum)}`,true); }
 }
 
 /* ================= Reading a frame ================= */
@@ -193,6 +274,11 @@ function asPostcode(t){
 }
 function asMoney(t){ t=t.replace(/^[^\d]+|[^\d]+$/g,''); return /^\d{1,3}(,\d{3})+\.\d{2}$|^\d{1,6}\.\d{2}$/.test(t)?parseFloat(t.replace(/,/g,'')):null; }
 const asSeq=t=>{ t=t.replace(/[.)\]]$/,''); return /^\d{1,3}$/.test(t)&&+t>0?+t:null; };
+function asSerial(t){   // 13-character item number, e.g. EQ420949020TH → running serial 42094902
+  t=t.replace(/[^A-Za-z0-9]/g,'').toUpperCase(); if(t.length!==13) return null;
+  const d=[...t.slice(2,11)].map(c=>FIX[c]??FIX[c.toLowerCase()]??c).join('');
+  return /^[A-Z]{2}$/.test(t.slice(0,2))&&/^\d{9}$/.test(d)?+d.slice(0,8):null;
+}
 
 // Table rows are anchored on the postcode column. The printed ลำดับ is read where possible, then every row's
 // number is taken from a local fit of row position (y) against the clearly-read numbers, so a missed or
@@ -215,7 +301,8 @@ function tableRows(words){
     const left=walk(p,-1), right=walk(p,1);
     const first=left.at(-1); const readSeq=first?asSeq(first.t):null;
     const money=right.map(x=>asMoney(x.t)).filter(m=>m!=null&&m<10000);
-    return {p,y:p.cy,readSeq,code:p.pc,codeWord:p.w,price:money.length?money[0]:null,line:[p,...left,...right]};
+    const serial=right.map(x=>asSerial(x.t)).find(v=>v!=null)??null;
+    return {p,y:p.cy,readSeq,code:p.pc,codeWord:p.w,price:money.length?money[0]:null,serial,line:[p,...left,...right]};
   });
 
   // fit y ≈ a + pitch·seq from the rows whose number was read, keep the consistent ones
@@ -238,8 +325,11 @@ function tableRows(words){
   // "รวมเงิน": a money value that is not on any row and bigger than every row price
   const onRow=new Set(rows.flatMap(r=>r.line));
   const maxP=Math.max(0,...good.map(r=>r.price||0));
-  const totals=W.filter(x=>!onRow.has(x)).map(x=>asMoney(x.t)).filter(m=>m!=null&&m>maxP&&m>=100);
-  return {rows:good,total:totals.length?Math.max(...totals):null};
+  const totals=W.filter(x=>!onRow.has(x)).map(x=>({x,m:asMoney(x.t)})).filter(o=>o.m!=null&&o.m>maxP&&o.m>=100);
+  const tot=totals.sort((a,b)=>b.m-a.m)[0];
+  // the last row of the manifest is the one right above the total
+  const lastSeq=tot?good.filter(r=>r.y<tot.x.cy).reduce((m,r)=>Math.max(m,r.seq),0)||null:null;
+  return {rows:good,total:tot?.m??null,lastSeq};
 }
 
 function srcSize(){ return mode==='cam'?[video.videoWidth,video.videoHeight]:[still.naturalWidth,still.naturalHeight]; }
@@ -249,39 +339,58 @@ function toScreen(b){
   return {x:(W-sw*k)/2+b.x0*k, y:(H-sh*k)/2+b.y0*k, w:(b.x1-b.x0)*k, h:(b.y1-b.y0)*k};
 }
 
+// Draw the source turned by rot (0/90/180/270° clockwise) so the table reads upright, and map boxes back.
+function drawRotated(src,sw,sh,s,rot,filter){
+  const w=Math.round(sw*s), h=Math.round(sh*s), side=rot%180!==0;
+  grab.width=side?h:w; grab.height=side?w:h;
+  gctx.setTransform(1,0,0,1,0,0); gctx.filter=filter;
+  if(rot===90){ gctx.translate(h,0); gctx.rotate(Math.PI/2); }
+  else if(rot===270){ gctx.translate(0,w); gctx.rotate(-Math.PI/2); }
+  else if(rot===180){ gctx.translate(w,h); gctx.rotate(Math.PI); }
+  gctx.drawImage(src,0,0,w,h); gctx.setTransform(1,0,0,1,0,0);
+  const back=(x,y)=>rot===90?[y,h-x]:rot===270?[w-y,x]:rot===180?[w-x,h-y]:[x,y];
+  return b=>{ const p=[back(b.x0,b.y0),back(b.x1,b.y1)]; return {x0:Math.min(p[0][0],p[1][0])/s,y0:Math.min(p[0][1],p[1][1])/s,x1:Math.max(p[0][0],p[1][0])/s,y1:Math.max(p[0][1],p[1][1])/s}; };
+}
+
 // each preprocessing catches different digits, so passes rotate through them
 const FILTERS=['grayscale(1) contrast(1.35)','grayscale(1) contrast(2)','none'];
-async function scanOnce(filter=FILTERS[0]){
-  const [sw,sh]=srcSize(); if(!sw) return;
+async function readFrame(filter,rot){
+  const [sw,sh]=srcSize(); if(!sw) return null;
   const s=Math.min(1,(mode==='cam'?1600:2400)/Math.max(sw,sh));   // never enlarge: upscaled photos read worse
-  grab.width=Math.round(sw*s); grab.height=Math.round(sh*s);
-  gctx.filter=filter;
-  gctx.drawImage(mode==='cam'?video:still,0,0,grab.width,grab.height);
+  const toSrc=drawRotated(mode==='cam'?video:still,sw,sh,s,rot,filter);
   const {data}=await worker.recognize(grab);
-  const now=performance.now(); let fresh=false;
   const words=(data.words||[]).filter(w=>w.confidence>=35);
-
-  // add what this frame shows to the current session
-  const S=cur(), tr=tableRows(words);
-  for(const r of tr.rows){
-    const row=(S.rows[r.seq] ||= {price:{},code:{}});
-    // postal charges end in .00/.25/.50/.75; an odd satang is usually a misread digit, so it counts less
-    if(r.price!=null){ const k=r.price.toFixed(2); inc(row.price,k,/\.(00|25|50|75)$/.test(k)?1:0.3); }
-    if(r.code) inc(row.code,r.code);
+  return {words,toSrc,tr:tableRows(words),pcs:words.filter(w=>asPostcode(w.text)).length};
+}
+function applyFrame(f){
+  const now=performance.now(); let fresh=false;
+  const S=cur(), {words,toSrc,tr}=f;
+  const rt=route(S,tr.rows);
+  if(rt.sh&&!rt.skip){
+    const sh=rt.sh;
+    for(const r of tr.rows){
+      const row=(sh.rows[r.seq] ||= {price:{},code:{},trk:{}}); row.trk ||= {};
+      // postal charges end in .00/.25/.50/.75; an odd satang is usually a misread digit, so it counts less
+      if(r.price!=null){ const k=r.price.toFixed(2); inc(row.price,k,/\.(00|25|50|75)$/.test(k)?1:0.3); }
+      if(r.code) inc(row.code,r.code);
+      if(r.serial!=null) inc(row.trk,r.serial);
+    }
+    if(tr.total!=null){ inc(sh.totals,tr.total.toFixed(2)); if(tr.lastSeq) inc(sh.last,tr.lastSeq); }
+    checkDone(sh);
   }
-  if(tr.total!=null) inc(S.totals,tr.total.toFixed(2));
+  if(rt.skip&&now-lastSkipMsg>4000){ lastSkipMsg=now; toast(`ใบที่ ${rt.sh.no} สแกนครบแล้ว — ไม่นับซ้ำ`); }
 
   const rowOf=new Map(tr.rows.filter(r=>r.codeWord).map(r=>[r.codeWord,r]));
   for(const w of words){
     const code=asPostcode(w.text); if(!code||!BY_CODE[code]) continue;   // only remote-area codes get a box
-    const b={x0:w.bbox.x0/s,y0:w.bbox.y0/s,x1:w.bbox.x1/s,y1:w.bbox.y1/s};
-    const r=rowOf.get(w), row=r?.seq??null, price=r?.price??null;
+    const b=toSrc(w.bbox);
+    const r=rowOf.get(w), row=r?.seq??null, no=rt.sh?.no??null;
     if(row==null) inc(S.loose,code);                  // e.g. a single parcel label
     const prev=dets.find(d=>d.code===code&&Math.abs(d.b.x0-b.x0)<200&&Math.abs(d.b.y0-b.y0)<200);
-    if(prev){ prev.target=b; prev.t=now; if(row!=null){prev.row=row;prev.price=price;} } else { dets.push({code,b:{...b},target:b,t:now,row,price}); }
+    if(prev){ prev.target=b; prev.t=now; if(row!=null){prev.row=row;prev.no=no;} } else { dets.push({code,b:{...b},target:b,t:now,row,no}); }
     if(!seen.has(code)){ seen.add(code); fresh=true; }
   }
-  if(tr.rows.length||tr.total!=null||dets.length){ S.updated=Date.now(); persist(); refreshSessBtn(); if(!$('sheet').hidden&&sheetView==='cur') renderSheet(); }
+  if(tr.rows.length||tr.total!=null||dets.length){ S.updated=Date.now(); persist(); refreshUI(); }
 
   dets=dets.filter(d=>mode!=='cam'||now-d.t<1500);
   if(fresh||(dets.length&&now-lastBeep>4000)){ if(dets.length){ beep(); lastBeep=now; } }
@@ -289,15 +398,20 @@ async function scanOnce(filter=FILTERS[0]){
   st.textContent=n?`พบพื้นที่ห่างไกล ${n} จุด`:(mode==='cam'?'กำลังสแกน…':'ไม่พบรหัสพื้นที่ห่างไกล');
   st.className='chip'+(n?' hit':'');
 }
+let lastSkipMsg=0;
 
 /* ================= Boxes + labels ================= */
+// false when most readings of that row name a different code (the box came from a one-off misread)
+function agrees(d){ if(d.row==null) return true; const row=cur().sheets.find(x=>x.no===d.no)?.rows[d.row]; const tc=row&&topVote(row.code); return !tc||tc===d.code; }
 function rr(x,y,w,h,r){ctx.beginPath();ctx.roundRect?ctx.roundRect(x,y,w,h,r):ctx.rect(x,y,w,h);}
 function draw(ts){
   const dpr=devicePixelRatio||1, W=ov.clientWidth, H=ov.clientHeight;
   if(ov.width!==W*dpr||ov.height!==H*dpr){ov.width=W*dpr;ov.height=H*dpr;}
   ctx.setTransform(dpr,0,0,dpr,0,0); ctx.clearRect(0,0,W,H);
   const now=performance.now();
+  const S=cur();
   for(const d of dets){
+    if(!agrees(d)) continue;
     for(const k of ['x0','y0','x1','y1']) d.b[k]+=(d.target[k]-d.b[k])*.35;
     const r=toScreen(d.b), p=6; r.x-=p; r.y-=p; r.w+=p*2; r.h+=p*2;
     ctx.globalAlpha=mode==='cam'?Math.max(0,1-(now-d.t)/1500):1;
@@ -305,7 +419,7 @@ function draw(ts){
     ctx.strokeStyle='#ffb020'; ctx.lineWidth=3; rr(r.x,r.y,r.w,r.h,6); ctx.stroke();
     ctx.fillStyle='rgba(255,176,32,.15)'; ctx.fill(); ctx.shadowBlur=0;
     const list=BY_CODE[d.code], e=list[0];
-    const t1=(d.row!=null?`ลำดับ ${d.row} · `:'')+`${e.office} · ${e.prov}`;
+    const t1=(d.row!=null?`${S.sheets.length>1&&d.no?`ใบ ${d.no} · `:''}ลำดับ ${d.row} · `:'')+`${e.office} · ${e.prov}`;
     const t2=list.some(x=>x.area)?'⚠ '+list.map(x=>x.area.replace('เฉพาะ','')).join(' / '):'';
     ctx.font='700 14px "IBM Plex Sans Thai",sans-serif';
     let lw=ctx.measureText(t1).width;
@@ -320,65 +434,102 @@ function draw(ts){
   requestAnimationFrame(draw);
 }
 
-/* ================= Session sheet ================= */
-let sheetView='cur', viewId=null, armed=null;
-function sessionHTML(s,isCur){
-  const a=summary(s);
-  let v;
-  if(!a.rows.length) v=`<div class="verdict wait">ยังไม่มีรายการ — ส่องกล้องหรือเลือกรูปใบนำส่ง ทุกหน้าของใบเดียวกันจะรวมอยู่ในชุดนี้</div>`;
-  else if(a.total==null) v=`<div class="verdict wait">ยังไม่เห็นยอด "รวมเงิน" — สแกนหน้าสุดท้ายของใบ หรือพิมพ์ยอดเองในช่องด้านบน</div>`;
-  else if(a.diff===0) v=`<div class="verdict ok">✓ ค่าบริการรวมตรงกับยอดในใบ<small>${a.rows.length} แถว รวม ฿${baht(a.sum)}${a.missing.length?` · แต่ยังไม่เห็นลำดับ ${a.missing.join(', ')}`:''}</small></div>`;
-  else v=`<div class="verdict bad">✗ ไม่ตรง ต่างกัน ฿${baht(Math.abs(a.diff)/100)}<small>${a.diff>0?'ยอดในใบมากกว่าที่รวมได้':'ที่รวมได้มากกว่ายอดในใบ'}${a.missing.length?` · ยังไม่ได้สแกนลำดับ ${a.missing.slice(0,30).join(', ')}${a.missing.length>30?' …':''}`:''}${a.noPrice.length?` · อ่านราคาไม่ได้ ลำดับ ${a.noPrice.map(r=>r.seq).join(', ')}`:''}</small></div>`;
-  const rem=[...a.remote.map(r=>{ const e=BY_CODE[r.code]; return `<div class="item remote"><div><b>ลำดับ ${r.seq} · ${r.code}</b><small>${esc(e[0].office)} · ${esc(e[0].prov)}${e.some(x=>x.area)?' · ⚠ '+e.map(x=>x.area.replace('เฉพาะ','')).join(' / '):''}${r.suspect?'<br><span style="color:var(--red)">ราคาเท่าแถวปกติ — ยังไม่บวก +20 หรือรหัสอ่านผิด ตรวจอีกครั้ง</span>':''}</small></div><span class="r">฿${baht(r.price)}</span></div>`; }),
-    ...a.loose.map(c=>{ const e=BY_CODE[c]; return `<div class="item remote"><div><b>${c}</b><small>${esc(e[0].office)} · ${esc(e[0].prov)} · ไม่ทราบลำดับ</small></div></div>`; })].join('');
-  const grid=a.rows.map(r=>`<span class="${BY_CODE[r.code]?'remote':''}"${r.unsure?' style="outline:1px dashed var(--red)"':''}><i>${r.seq}</i>${r.price!=null?baht(r.price)+(r.unsure?'?':''):'?'}</span>`).join('');
-  const unsureNote=a.unsure.length?`<div class="verdict wait" style="margin-top:8px">อ่านไม่ชัด ตรวจด้วยตา: ${a.unsure.map(r=>`ลำดับ ${r.seq} (ถือเป็น ${baht(r.price)})`).join(', ')}</div>`:'';
-  return `<div class="hd"><input id="sName" value="${esc(s.name)}" aria-label="ชื่อชุด"><button id="sClose" aria-label="ปิด">✕</button></div>
-    ${isCur?'':`<div class="verdict wait" style="margin:0 0 12px">ชุดจากประวัติ · ${new Date(s.created).toLocaleString('th-TH')}</div>`}
-    <div class="tot"><div><small>รวมค่าบริการที่สแกนได้</small><b>฿${baht(a.sum)}</b><small>${a.rows.length} แถว${a.maxSeq?` · ถึงลำดับ ${a.maxSeq}`:''}</small></div>
-      <div><small>ยอด "รวมเงิน" ในใบ${s.manualTotal!=null?' (พิมพ์เอง)':''}</small><input id="sTotal" inputmode="decimal" placeholder="—" value="${a.total!=null?baht(a.total):''}" aria-label="ยอดรวมเงินในใบ"><small>แก้ได้ถ้าอ่านผิด</small></div></div>
-    ${v}${unsureNote}
-    <div class="sec">พื้นที่ห่างไกล / เกาะ (${a.remote.length+a.loose.length})</div>
+/* ================= Panel: session → manifests → rows ================= */
+let view={k:'sess'}, armed=null;   // k: sess | sheet (id) | hist | old (session id)
+function remoteItem(r,multi){ const e=BY_CODE[r.code];
+  return `<div class="item remote"><div><b>${multi?`ใบ ${r.no} · `:''}ลำดับ ${r.seq} · ${r.code}</b><small>${esc(e[0].office)} · ${esc(e[0].prov)}${e.some(x=>x.area)?' · ⚠ '+e.map(x=>x.area.replace('เฉพาะ','')).join(' / '):''}${r.suspect?'<br><span style="color:var(--red)">ราคาเท่าแถวปกติ — ยังไม่บวก +20 หรือรหัสอ่านผิด ตรวจอีกครั้ง</span>':''}</small></div><span class="r">฿${baht(r.price)}</span></div>`; }
+function sessionHTML(S,isCur){
+  const ss=sessionSummary(S), multi=ss.list.length>1;
+  const sheets=ss.list.map(({sh,a})=>{
+    const st=sh.done?'<span class="pill ok">✓ ครบ</span>':a.total!=null&&!a.missing.length&&!a.noPrice.length&&a.diff!==0?'<span class="pill bad">✗ ไม่ตรง</span>':`<span class="pill">${a.rows.length}${a.n?`/${a.n}`:''}</span>`;
+    return `<button class="item sheetrow" data-sheet="${sh.id}"><div style="flex:1;min-width:0"><b>ใบที่ ${sh.no}${isCur&&sh.id===S.active?' · กำลังสแกน':''}</b><small>฿${baht(a.sum)}${a.total!=null?` / ในใบ ฿${baht(a.total)}`:''}${a.remote.length?` · ⚑ ${a.remote.length}`:''}</small>${cellsHTML(a)}</div><span class="r">${st}</span></button>`; }).join('');
+  const rem=[...ss.remote.map(r=>remoteItem(r,multi)),
+    ...ss.loose.map(c=>{ const e=BY_CODE[c]; return `<div class="item remote"><div><b>${c}</b><small>${esc(e[0].office)} · ${esc(e[0].prov)} · ไม่ทราบลำดับ</small></div></div>`; })].join('');
+  const allDone=ss.list.length&&ss.done===ss.list.length;
+  return `<div class="hd"><input id="sName" value="${esc(S.name)}" aria-label="ชื่อชุด"><button id="sClose" aria-label="ปิด">✕</button></div>
+    ${isCur?'':`<div class="verdict wait" style="margin:0 0 12px">ชุดจากประวัติ · ${new Date(S.created).toLocaleString('th-TH')}</div>`}
+    <div class="tot"><div><small>ค่าบริการรวมทุกใบ</small><b>฿${baht(ss.sum)}</b><small>${ss.list.length} ใบ · ${ss.rows} แถว</small></div>
+      <div><small>ใบที่ครบแล้ว</small><b>${ss.done}/${ss.list.length}</b><small>ครบ = ทุกแถวมีราคา และยอดตรงกับ "รวมเงิน"</small></div></div>
+    ${allDone?'<div class="verdict ok">✓ ทุกใบครบและยอดตรง</div>':''}
+    <div class="sec">พื้นที่ห่างไกล / เกาะ (${ss.remote.length+ss.loose.length})</div>
     <div class="list">${rem||'<div class="empty">ไม่พบ</div>'}</div>
-    ${a.rows.length?`<div class="sec">ค่าบริการแต่ละลำดับ</div><div class="grid">${grid}</div>`:''}
+    <div class="sec">ใบนำส่ง (แตะเพื่อดู / แก้)</div>
+    <div class="list">${sheets}</div>
     <div class="acts">${isCur
-      ?`<button class="pri" id="sNew">จบชุดนี้ เริ่มชุดใหม่</button><button id="sHist">ประวัติ (${sessions.filter(x=>!isEmpty(x)).length})</button><button class="danger" id="sDel">ล้างชุดนี้</button>`
+      ?`<button id="sAdd">+ ใบใหม่</button><button class="pri" id="sNew">จบชุดนี้ เริ่มชุดใหม่</button><button id="sHist">ประวัติ (${sessions.filter(x=>!isEmpty(x)).length})</button><button class="danger" id="sDel">ล้างชุดนี้</button>`
       :`<button class="pri" id="sResume">สแกนต่อในชุดนี้</button><button id="sHist">กลับไปประวัติ</button><button class="danger" id="sDel">ลบชุดนี้</button>`}</div>`;
+}
+function sheetHTML(S,sh){
+  const a=sheetSummary(sh);
+  let v;
+  if(!a.rows.length) v=`<div class="verdict wait">ยังไม่มีรายการ</div>`;
+  else if(sh.done) v=`<div class="verdict ok">✓ ครบ ${a.n} แถว ยอดตรง ฿${baht(a.sum)}</div>`;
+  else if(a.missing.length||a.noPrice.length) v=`<div class="verdict wait">ยังไม่ครบ${a.missing.length?` · ยังไม่ได้สแกนลำดับ ${a.missing.slice(0,40).join(', ')}${a.missing.length>40?' …':''}`:''}${a.noPrice.length?` · อ่านราคาไม่ได้ ลำดับ ${a.noPrice.map(r=>r.seq).join(', ')}`:''}<small>ส่องกล้องไปที่แถวเหล่านี้อีกครั้ง หรือแตะช่องเพื่อพิมพ์ราคาเอง</small></div>`;
+  else if(a.total==null) v=`<div class="verdict wait">ยังไม่เห็นยอด "รวมเงิน" — สแกนท้ายใบ หรือพิมพ์ยอดเองด้านบน</div>`;
+  else v=`<div class="verdict bad">✗ ไม่ตรง ต่างกัน ฿${baht(Math.abs(a.diff)/100)}<small>${a.diff>0?'ยอดในใบมากกว่าที่รวมได้':'ที่รวมได้มากกว่ายอดในใบ'} · แตะช่องที่ราคาผิดเพื่อแก้</small></div>`;
+  const by=new Map(a.rows.map(r=>[r.seq,r])); let grid='';
+  for(let i=1;i<=a.n;i++){ const r=by.get(i);
+    grid+=`<button class="gcell ${r&&BY_CODE[r.code]?'remote':''}" data-seq="${i}" style="${!r||r.price==null||r.unsure?'outline:1px dashed var(--red);':''}"><i>${i}</i>${r?.price!=null?baht(r.price)+(r.unsure?'?':'')+(r.manual?'✎':''):'—'}</button>`; }
+  const unsureNote=a.unsure.length?`<div class="verdict wait" style="margin-top:8px">อ่านไม่ชัด ตรวจด้วยตา: ${a.unsure.map(r=>`ลำดับ ${r.seq} (ถือเป็น ${baht(r.price)})`).join(', ')}</div>`:'';
+  return `<div class="hd"><button class="back" id="sBackS">‹ ชุด</button><b style="flex:1;font-size:18px">ใบที่ ${sh.no}</b><button id="sClose" aria-label="ปิด">✕</button></div>
+    <div class="tot"><div><small>รวมค่าบริการที่สแกนได้</small><b>฿${baht(a.sum)}</b><small>${a.rows.length}${a.n?`/${a.n}`:''} แถว</small></div>
+      <div><small>ยอด "รวมเงิน" ในใบ${sh.manualTotal!=null?' (พิมพ์เอง)':''}</small><input id="sTotal" inputmode="decimal" placeholder="—" value="${a.total!=null?baht(a.total):''}" aria-label="ยอดรวมเงินในใบ"><small>แก้ได้ถ้าอ่านผิด</small></div></div>
+    ${v}${unsureNote}
+    ${a.remote.length?`<div class="sec">พื้นที่ห่างไกล / เกาะ (${a.remote.length})</div><div class="list">${a.remote.map(r=>remoteItem({...r,no:sh.no},false)).join('')}</div>`:''}
+    ${a.n?`<div class="sec">ค่าบริการแต่ละลำดับ (แตะเพื่อแก้)</div><div class="grid">${grid}</div>`:''}
+    <div class="acts"><button class="pri" id="sUse">${sh.id===S.active?'กำลังสแกนใบนี้':'สแกนใบนี้ต่อ'}</button><button class="danger" id="sDelSheet">ลบใบนี้</button></div>`;
 }
 function historyHTML(){
   const list=sessions.filter(s=>!isEmpty(s)||s.id===curId);
   return `<div class="hd"><b style="flex:1;font-size:18px">ประวัติการสแกน</b><button id="sClose" aria-label="ปิด">✕</button></div>
-    <div class="list">${list.map(s=>{ const a=summary(s);
-      const st=a.total==null||!a.rows.length?'<span class="pill">ไม่มียอด</span>':a.diff===0?'<span class="pill ok">✓ ตรง</span>':'<span class="pill bad">✗ ไม่ตรง</span>';
-      return `<button class="item" data-id="${s.id}"><div><b>${esc(s.name)}${s.id===curId?' · ชุดปัจจุบัน':''}</b><small>${new Date(s.updated).toLocaleString('th-TH')} · ${a.rows.length} แถว · ฿${baht(a.sum)}${a.remote.length+a.loose.length?` · ⚑ ห่างไกล ${a.remote.length+a.loose.length}`:''}</small></div><span class="r">${st}</span></button>`; }).join('')||'<div class="empty">ยังไม่มีประวัติ</div>'}</div>
+    <div class="list">${list.map(S=>{ const ss=sessionSummary(S);
+      const st=!ss.rows?'<span class="pill">ว่าง</span>':ss.done===ss.list.length?'<span class="pill ok">✓ ครบ</span>':`<span class="pill">ครบ ${ss.done}/${ss.list.length}</span>`;
+      return `<button class="item" data-id="${S.id}"><div><b>${esc(S.name)}${S.id===curId?' · ชุดปัจจุบัน':''}</b><small>${new Date(S.updated).toLocaleString('th-TH')} · ${ss.list.length} ใบ · ${ss.rows} แถว · ฿${baht(ss.sum)}${ss.remote.length+ss.loose.length?` · ⚑ ห่างไกล ${ss.remote.length+ss.loose.length}`:''}</small></div><span class="r">${st}</span></button>`; }).join('')||'<div class="empty">ยังไม่มีประวัติ</div>'}</div>
     <div class="acts"><button id="sBack">กลับไปชุดปัจจุบัน</button></div>`;
 }
 function renderSheet(){
-  const el=$('sheetIn'); armed=null;
-  if(sheetView==='hist'){ el.innerHTML=historyHTML();
-    el.querySelectorAll('.item[data-id]').forEach(b=>b.onclick=()=>{ if(b.dataset.id===curId){sheetView='cur';} else {sheetView='view';viewId=b.dataset.id;} renderSheet(); });
-    $('sBack').onclick=()=>{ sheetView='cur'; renderSheet(); };
+  const el=$('sheetIn');
+  if(['sName','sTotal'].includes(document.activeElement?.id)) return;   // don't redraw under the keyboard
+  armed=null;
+  if(view.k==='hist'){ el.innerHTML=historyHTML();
+    el.querySelectorAll('.item[data-id]').forEach(b=>b.onclick=()=>{ view=b.dataset.id===curId?{k:'sess'}:{k:'old',id:b.dataset.id}; renderSheet(); });
+    $('sBack').onclick=()=>{ view={k:'sess'}; renderSheet(); };
+  }else if(view.k==='sheet'){
+    const S=cur(), sh=S.sheets.find(x=>x.id===view.id); if(!sh){ view={k:'sess'}; return renderSheet(); }
+    el.innerHTML=sheetHTML(S,sh);
+    $('sBackS').onclick=()=>{ view={k:'sess'}; renderSheet(); };
+    $('sTotal').onchange=e=>{ const v=parseFloat(e.target.value.replace(/,/g,'')); sh.manualTotal=isNaN(v)?null:v; sh.done=false; checkDone(sh); persist(); refreshUI(); };
+    $('sUse').onclick=()=>{ S.active=sh.id; persist(); refreshUI(); };
+    el.querySelectorAll('.gcell').forEach(c=>c.onclick=()=>{
+      const k=c.dataset.seq, row=sh.rows[k];
+      const v=prompt(`ค่าบริการ ลำดับ ${k} (บาท)\nเว้นว่าง = ลบค่านี้แล้วให้สแกนใหม่`, row?.manual??(row?topVote(row.price)??'':''));
+      if(v===null) return;
+      if(v.trim()===''){ delete sh.rows[k]; }
+      else{ const n=parseFloat(v.replace(/,/g,'')); if(isNaN(n)) return; (sh.rows[k] ||= {price:{},code:{},trk:{}}).manual=n; }
+      sh.done=false; checkDone(sh); persist(); refreshUI(); });
+    const d=$('sDelSheet'); d.onclick=()=>{ if(armed!=='del'){ armed='del'; d.textContent='แตะอีกครั้งเพื่อยืนยัน'; return; }
+      S.sheets=S.sheets.filter(x=>x.id!==sh.id); if(!S.sheets.length) newSheet(S); if(S.active===sh.id) S.active=S.sheets.at(-1).id;
+      persist(); view={k:'sess'}; refreshUI(); renderSheet(); };
   }else{
-    const s=sheetView==='cur'?cur():sessions.find(x=>x.id===viewId);
-    if(!s){ sheetView='hist'; return renderSheet(); }
-    const isCur=sheetView==='cur';
-    // keep focus in the total box while live frames re-render the sheet
-    const focusTot=document.activeElement?.id==='sTotal', focusName=document.activeElement?.id==='sName';
-    if(focusTot||focusName) return;
-    el.innerHTML=sessionHTML(s,isCur);
-    $('sName').onchange=e=>{ s.name=e.target.value.trim()||s.name; persist(); };
-    $('sTotal').onchange=e=>{ const v=parseFloat(e.target.value.replace(/,/g,'')); s.manualTotal=isNaN(v)?null:v; persist(); refreshSessBtn(); renderSheet(); };
-    $('sHist').onclick=()=>{ sheetView='hist'; renderSheet(); };
+    const isCur=view.k==='sess', S=isCur?cur():sessions.find(x=>x.id===view.id);
+    if(!S){ view={k:'hist'}; return renderSheet(); }
+    el.innerHTML=sessionHTML(S,isCur);
+    $('sName').onchange=e=>{ S.name=e.target.value.trim()||S.name; persist(); };
+    $('sHist').onclick=()=>{ view={k:'hist'}; renderSheet(); };
+    if(isCur) el.querySelectorAll('[data-sheet]').forEach(b=>b.onclick=()=>{ view={k:'sheet',id:b.dataset.sheet}; renderSheet(); });
     const del=$('sDel');
     del.onclick=()=>{ if(armed!=='del'){ armed='del'; del.textContent='แตะอีกครั้งเพื่อยืนยัน'; return; }
-      sessions=sessions.filter(x=>x.id!==s.id); if(s.id===curId) newSession(); else persist();
-      sheetView=isCur?'cur':'hist'; refreshSessBtn(); renderSheet(); };
-    if(isCur) $('sNew').onclick=()=>{ if(isEmpty(cur())) sessions=sessions.filter(x=>x.id!==curId); newSession(); dets=[]; seen=new Set(); refreshSessBtn(); renderSheet(); };
-    else $('sResume').onclick=()=>{ if(isEmpty(cur())) sessions=sessions.filter(x=>x.id!==curId); curId=s.id; persist(); sheetView='cur'; refreshSessBtn(); renderSheet(); };
+      sessions=sessions.filter(x=>x.id!==S.id); if(S.id===curId) newSession(); else persist();
+      view=isCur?{k:'sess'}:{k:'hist'}; refreshUI(); renderSheet(); };
+    if(isCur){
+      $('sAdd').onclick=()=>{ const A=activeSheet(S); const n=sheetEmpty(A)?A:newSheet(S); persist(); toast(`สแกนใบที่ ${n.no}`); refreshUI(); };
+      $('sNew').onclick=()=>{ if(isEmpty(cur())) sessions=sessions.filter(x=>x.id!==curId); newSession(); dets=[]; seen=new Set(); refreshUI(); };
+    }else $('sResume').onclick=()=>{ if(isEmpty(cur())) sessions=sessions.filter(x=>x.id!==curId); curId=S.id; persist(); view={k:'sess'}; refreshUI(); renderSheet(); };
   }
   $('sClose').onclick=()=>$('sheet').hidden=true;
 }
-$('sessBtn').onclick=()=>{ sheetView='cur'; $('sheet').hidden=false; renderSheet(); };
+$('sessBtn').onclick=()=>{ view={k:'sess'}; $('sheet').hidden=false; renderSheet(); };
+$('cov').onclick=()=>{ view={k:'sheet',id:activeSheet(cur()).id}; $('sheet').hidden=false; renderSheet(); };
 $('sheet').onclick=e=>{ if(e.target.id==='sheet') $('sheet').hidden=true; };
 
 /* ================= Beep + vibrate on a find ================= */
@@ -412,7 +563,16 @@ async function startCam(){
   $('status').textContent='กำลังโหลดตัวอ่าน…';
   await getWorker();
   $('status').textContent='กำลังสแกน…';
-  for(let i=0;mode==='cam';i++){ try{ await scanOnce(FILTERS[i%FILTERS.length]); }catch(e){ await new Promise(r=>setTimeout(r,300)); } }
+  // if the page is held sideways, try the other orientations until postcodes show up, then stay there
+  const ROTS=[0,90,270]; let ri=0, empty=0;
+  for(let i=0;mode==='cam';i++){
+    try{
+      const f=await readFrame(FILTERS[i%FILTERS.length],ROTS[ri]);
+      if(!f) continue;
+      applyFrame(f);
+      if(f.pcs){ empty=0; } else if(++empty>=4){ empty=0; ri=(ri+1)%ROTS.length; }
+    }catch(e){ await new Promise(r=>setTimeout(r,300)); }
+  }
 }
 
 /* ================= Several photos ================= */
@@ -442,12 +602,16 @@ $('file').onchange=async()=>{
   still.hidden=false; $('strip').hidden=false; $('cam').hidden=false;
   const start=shots.length;
   shots.push(...files.map(f=>({url:URL.createObjectURL(f),dets:null})));
-  await getWorker();
+  await getWorker(); refreshUI();
   for(let i=start;i<shots.length;i++){
     await showShot(i);
     dets=[]; seen=new Set();
-    for(const f of FILTERS) await scanOnce(f);
-    shots[i].dets=dets.map(d=>({...d}));
+    // find which way up the photo is: the orientation that shows the most postcodes
+    let rot=0, f=await readFrame(FILTERS[0],0);
+    if(f.pcs<3){ for(const r of [90,270,180]){ const g=await readFrame(FILTERS[0],r); if(g.pcs>f.pcs){ f=g; rot=r; } if(f.pcs>=3) break; } }
+    applyFrame(f);
+    for(const flt of FILTERS.slice(1)) applyFrame(await readFrame(flt,rot));
+    dets=dets.filter(agrees); shots[i].dets=dets.map(d=>({...d}));
     renderStrip(); statusLine();
   }
   const firstHit=shots.findIndex((p,i)=>i>=start&&p.dets.length);
@@ -456,7 +620,7 @@ $('file').onchange=async()=>{
 };
 $('cam').onclick=()=>location.reload();
 
-refreshSessBtn();
+refreshUI();
 requestAnimationFrame(draw);
 startCam();
 </script>
