@@ -167,7 +167,7 @@ const DATA=[
 ];
 const BY_CODE={};
 for(const [seq,prov,office,code,area] of DATA) (BY_CODE[code] ||= []).push({seq,prov,office,area});
-const APP_VERSION='v11';   // shown in the app; every version is listed at versions.html
+const APP_VERSION='v10';   // shown in the app; every version is listed at versions.html
 const $=id=>document.getElementById(id);
 document.addEventListener('DOMContentLoaded',()=>{ const v=$('ver'); if(v) v.textContent=APP_VERSION; });
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -465,13 +465,7 @@ function saveTo(sh,cap,quiet){
 }
 // is this row already saved in the manifest with the same code and charge?
 function isSaved(sh,r){ const row=sh.rows[r.seq]; if(!row||topVote(row.code)!==r.code) return false;
-  const ts=topVote(row.trk); if(ts!=null&&r.serial!=null&&Math.abs(r.serial-(+ts))>1) return false;
-  return row.manual!=null||topVote(row.price)!=null; }
-// the saved row at this ลำดับ says something else: another postcode, or another item number
-function contradicts(sh,r){ const row=sh.rows[r.seq]; if(!row) return false;
-  const tc=topVote(row.code); if(tc&&tc!==r.code) return 'code';
-  const ts=topVote(row.trk); if(ts!=null&&r.serial!=null&&Math.abs(r.serial-(+ts))>1) return 'serial';
-  return false; }
+  return row.manual!=null||(topVote(row.price)!=null&&(r.price==null||topVote(row.price)===r.price.toFixed(2))); }
 
 /* ---- automatic collection from the live camera ----
    A row is saved only after the same ลำดับ + postcode + charge is read in 3 separate frames, so a blurry or
@@ -482,8 +476,6 @@ function collectLive(f){
   const now=Date.now(); frameNo++;
   for(const r of f.tr.rows){
     const k=r.seq+'|'+r.code; const o=buf.get(k)||{seq:r.seq,code:r.code,n:0,price:{},serial:{},fr:-1};
-    // same ลำดับ and postcode but another item number: a different document is in view, start confirming again
-    if(r.serial!=null){ const ts=topVote(o.serial); if(ts!=null&&Math.abs(r.serial-(+ts))>1){ o.n=0; o.price={}; o.serial={}; } }
     if(o.fr!==frameNo){ o.n++; o.fr=frameNo; }
     if(r.price!=null&&okSatang(r.price)) inc(o.price,r.price.toFixed(2));
     if(r.serial!=null) inc(o.serial,r.serial);
@@ -500,24 +492,18 @@ function collectLive(f){
   const tk=Object.keys(totBuf).find(k=>totBuf[k].n>=CONF);
   const cap={rows,total:tk?+tk:null,lastSeq:tk&&topVote(totBuf[tk].last)!=null?+topVote(totBuf[tk].last):null};
   const S=cur(), A=activeSheet(S);
-  // Is this the manifest being scanned? Item numbers are unique to one manifest, so they decide first;
-  // postcodes alone are not enough (the same customers appear on every manifest).
-  const sa=routeScore(A,rows);
-  const clash=rows.filter(r=>contradicts(A,r));
-  const byCode=clash.filter(r=>contradicts(A,r)==='code').length, bySerial=clash.length-byCode;
+  // rows whose ลำดับ is already saved in this manifest with a different postcode
+  const clash=rows.filter(r=>{ const tc=A.rows[r.seq]&&topVote(A.rows[r.seq].code); return tc&&tc!==r.code; });
   const fresh=rows.filter(r=>!isSaved(A,r)&&!clash.includes(r));
   const newTotal=cap.total!=null&&topVote(A.totals)!==cap.total.toFixed(2);
-  const different=!sheetEmpty(A)&&(sa.c>=2||clash.length>=2);
-  if(!different){
-    if(!A.done){ if(fresh.length||newTotal){ saveTo(A,{...cap,rows:fresh},true); flashSaved(); } return; }
-    if(fresh.length<3) return;                              // finished manifest seen again
-    ask({target:'new',why:`ใบที่ ${A.no} ครบแล้ว แต่เจอแถวที่ยังไม่มีในใบนั้น ${fresh.length} แถว`},cap); return;
-  }
+  if(!fresh.length&&!newTotal&&clash.length<2) return;
+  let sg=suggest(S,rows);
+  if(clash.length>=2&&sg.target===A.id) sg={...sg,target:'new',why:`ลำดับ ${clash.map(r=>r.seq).join(', ')} มีอยู่แล้วในใบที่ ${A.no} แต่รหัสไม่ตรง — น่าจะเป็นใบใหม่`};
+  if(sg.target===A.id&&!A.done){ if(fresh.length||newTotal){ saveTo(A,{...cap,rows:fresh},true); flashSaved(); } return; }
+  const tgt=S.sheets.find(x=>x.id===sg.target);
+  if(tgt?.done) return;                                    // a finished manifest seen again: nothing to add
   if(rows.length<3) return;                                // not enough to decide yet
-  const other=S.sheets.filter(sh=>sh!==A&&!sheetEmpty(sh)).map(sh=>({sh,...routeScore(sh,rows)})).filter(o=>o.m>=2&&o.c===0).sort((a,b)=>b.m-a.m)[0];
-  if(other){ if(other.sh.done) return; ask({target:other.sh.id,why:`ตรงกับใบที่ ${other.sh.no} ${other.m} จุด`},cap); return; }
-  const why=[bySerial?`เลขที่สิ่งของไม่ตรง ${bySerial} แถว`:'',byCode?`รหัสไปรษณีย์ไม่ตรง ${byCode} แถว`:'',!clash.length&&sa.c?`เลขที่สิ่งของไม่ต่อเนื่อง ${sa.c} แถว`:''].filter(Boolean).join(' · ');
-  ask({target:'new',why:`ไม่ตรงกับใบที่ ${A.no}: ${why}`},cap);
+  ask(sg,cap);
 }
 function flashSaved(){ const c=$('cov'); c.style.boxShadow='0 0 0 3px var(--green)'; setTimeout(()=>c.style.boxShadow='',500); }
 function ask(sg,cap){
