@@ -14,16 +14,13 @@ html,body{height:100%;background:#000;color:var(--text);font-family:var(--font);
 video,#still{position:fixed;inset:0;width:100%;height:100%;object-fit:cover}
 #still{object-fit:contain}
 canvas{position:fixed;inset:0;width:100%;height:100%;pointer-events:none}
-#bar{position:fixed;left:0;right:0;top:0;padding:calc(env(safe-area-inset-top,0px) + 8px) 10px 10px;display:flex;gap:6px;align-items:center;flex-wrap:wrap;background:linear-gradient(#000e,#0000);z-index:100}
+#bar{position:fixed;left:0;right:0;top:0;padding:calc(env(safe-area-inset-top,0px) + 12px) 12px 12px;display:flex;gap:8px;align-items:center;flex-wrap:wrap;background:linear-gradient(#000a,#0000)}
 .chip{font-size:13px;padding:6px 12px;border-radius:99px;background:rgba(0,0,0,.55);border:1px solid rgba(255,255,255,.25)}
 .chip.hit{border-color:var(--amber);color:var(--amber);font-weight:700}
 .sp{flex:1}
 button{font:inherit;color:inherit;background:rgba(0,0,0,.55);border:1px solid rgba(255,255,255,.25);border-radius:99px;padding:8px 14px;font-size:14px;cursor:pointer}
 button.on{border-color:var(--amber);color:var(--amber)}
-#still.frozen{object-fit:cover;z-index:1;pointer-events:auto;cursor:pointer}
-#freezeOverlay{position:fixed;bottom:calc(env(safe-area-inset-bottom,0px) + 126px);left:50%;transform:translateX(-50%);z-index:105;pointer-events:auto}
-.unfreeze-btn{background:#5fe3ff;color:#000;border:0;border-radius:99px;padding:10px 22px;font-size:14px;font-weight:700;box-shadow:0 4px 20px rgba(95,227,255,.5);cursor:pointer;animation:pulseBtn 1.5s infinite alternate}
-@keyframes pulseBtn{from{transform:scale(1)}to{transform:scale(1.05)}}
+#still.frozen{object-fit:cover;z-index:1}
 #sessBtn{font-size:13px;padding:6px 12px;font-variant-numeric:tabular-nums}
 #sessBtn.ok{border-color:var(--green);color:var(--green)}
 #sessBtn.bad{border-color:var(--red);color:var(--red)}
@@ -31,7 +28,7 @@ button.on{border-color:var(--amber);color:var(--amber)}
 #rotBtn.on{border-color:var(--amber);color:var(--amber);background:rgba(255,176,32,.18);font-weight:700}
 #freezeBarBtn{font-size:13px;padding:6px 12px;font-variant-numeric:tabular-nums}
 #freezeBarBtn.on{border-color:#5fe3ff;color:#5fe3ff;background:rgba(95,227,255,.2);font-weight:700}
-#remoteAlert{position:fixed;top:calc(env(safe-area-inset-top,0px) + 54px);left:10px;right:10px;max-width:540px;margin:0 auto;padding:12px 14px;border-radius:16px;background:rgba(20,16,8,0.92);border:2px solid var(--amber);box-shadow:0 8px 32px rgba(255,176,32,0.35),0 0 14px rgba(0,0,0,0.85);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);z-index:110;display:grid;gap:10px;animation:raIn .25s ease-out}
+#remoteAlert{position:fixed;top:calc(env(safe-area-inset-top,0px) + 54px);left:10px;right:10px;max-width:540px;margin:0 auto;padding:12px 14px;border-radius:16px;background:rgba(20,16,8,0.92);border:2px solid var(--amber);box-shadow:0 8px 32px rgba(255,176,32,0.35),0 0 14px rgba(0,0,0,0.85);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);z-index:6;display:grid;gap:10px;animation:raIn .25s ease-out}
 @keyframes raIn{from{transform:translateY(-10px);opacity:0}to{transform:translateY(0);opacity:1}}
 .ra-hd{display:flex;align-items:center;justify-content:space-between;gap:8px}
 .ra-title{font-size:15px;font-weight:700;color:var(--amber);display:flex;align-items:center;gap:6px}
@@ -184,7 +181,6 @@ input{-webkit-user-select:text;user-select:text}
     <button id="raClearBtn" class="ra-act clear">✕ ล้างจอ</button>
   </div>
 </div>
-<div id="freezeOverlay" hidden><button id="unfreezeBtn" class="unfreeze-btn">▶ แตะที่นี่ หรือแตะจอ เพื่อสแกนต่อ</button></div>
 <div id="msg" hidden></div>
 <div id="strip" hidden></div>
 <div id="ring" hidden></div>
@@ -237,50 +233,7 @@ const DATA=[
 ];
 const BY_CODE={};
 for(const [seq,prov,office,code,area] of DATA) (BY_CODE[code] ||= []).push({seq,prov,office,area});
-
-function classifyRemote(code, rowText=''){
-  const list=BY_CODE[code];
-  if(!list||!list.length) return null;
-  const e=list[0];
-  const hasCond=list.some(x=>x.area&&x.area.length>0);
-  const isAlwaysIsland=!hasCond&&(/เกาะ/.test(e.office)||/เกาะ/.test(e.prov));
-  const cleanRow=String(rowText||'');
-  
-  if(hasCond){
-    const islandName=list.map(x=>x.area.replace('เฉพาะ','')).join(', ');
-    const rowHasIsland=/เกาะ/.test(cleanRow)||list.some(x=>cleanRow.includes(x.area.replace('เฉพาะ','')));
-    return {
-      type:'conditional_island',
-      isRemote:rowHasIsland?true:'maybe',
-      islandName,
-      rowHasIsland,
-      office:e.office,
-      prov:e.prov,
-      label:rowHasIsland?`🏝️ คาดว่าเป็นเกาะ (${islandName})`:`⚠️ เฉพาะเกาะ: ต้องมีคำว่า "${islandName}" บนที่อยู่`,
-      shortLabel:rowHasIsland?`🏝️ เกาะ (${islandName})`:`⚠️ ตรวจที่อยู่ (${islandName})`
-    };
-  } else if(isAlwaysIsland){
-    return {
-      type:'always_island',
-      isRemote:true,
-      islandName:e.office,
-      office:e.office,
-      prov:e.prov,
-      label:`🏝️ ปลายทางเกาะ (${e.office} จ.${e.prov}) เป็นพื้นที่ห่างไกลแน่นอน`,
-      shortLabel:`🏝️ เกาะ (${e.office})`
-    };
-  } else {
-    return {
-      type:'mainland_remote',
-      isRemote:true,
-      office:e.office,
-      prov:e.prov,
-      label:`⛰️ พื้นที่ห่างไกลบนบก (${e.office} จ.${e.prov})`,
-      shortLabel:`⛰️ ห่างไกลบนบก (${e.office})`
-    };
-  }
-}
-const APP_VERSION='v17';   // shown in the app; every version is listed at versions.html
+const APP_VERSION='v16';   // shown in the app; every version is listed at versions.html
 const $=id=>document.getElementById(id);
 document.addEventListener('DOMContentLoaded',()=>{ const v=$('ver'); if(v) v.textContent=APP_VERSION; });
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -488,8 +441,7 @@ function tableRows(words){
     const first=left.at(-1); const readSeq=first?asSeq(first.t):null;
     const money=right.map(x=>asMoney(x.t)).filter(m=>m!=null&&m<10000);
     const serial=right.map(x=>asSerial(x.t)).find(v=>v!=null)??null;
-    const rowText=[...left,p,...right].map(x=>x.t).join(' ');
-    return {p,y:p.cy,readSeq,code:p.pc,codeWord:p.w,price:money.length?money[0]:null,serial,line:[p,...left,...right],rowText};
+    return {p,y:p.cy,readSeq,code:p.pc,codeWord:p.w,price:money.length?money[0]:null,serial,line:[p,...left,...right]};
   });
 
   // fit y ≈ a + pitch·seq from the rows whose number was read, keep the consistent ones
@@ -550,9 +502,9 @@ const FILTERS=['grayscale(1) contrast(1.35)','grayscale(1) contrast(2)','none'];
 const canv=[];
 async function readFrame(filter,rot,src,k=0){
   const el=src?.el??(mode==='cam'?video:still), [sw,sh]=src?[src.w,src.h]:srcSize(); if(!sw) return null;
-  // Google Glass AR Fast-Path: 840px for live camera (ultra-fast ~350ms), 1800px for still capture (super sharp)
-  const maxDim = (mode==='cam'&&!src) ? 840 : 1800;
-  const s = (mode==='cam'&&!src) ? Math.min(1, maxDim/Math.max(sw,sh)) : Math.min(2.5, maxDim/Math.max(sw,sh));
+  // Google Glass AR Fast-Path: 840px for live camera (ultra-fast ~350ms), 1280px for still capture (super sharp)
+  const maxDim = (mode==='cam'&&!src) ? 840 : 1280;
+  const s=Math.min(1,maxDim/Math.max(sw,sh));
   const cv=k?(canv[k] ||= document.createElement('canvas')):grab;
   const toSrc=drawRotated(el,sw,sh,s,rot,filter,cv);
   const t0=performance.now();
@@ -578,15 +530,13 @@ function freezeFrame(){
   still.src=freezeCanvas.toDataURL('image/jpeg',0.92);
   still.className='frozen';
   still.hidden=false;
-  still.onclick=unfreezeFrame;
-  const fo=$('freezeOverlay'); if(fo) fo.hidden=false;
   try{ video.pause(); }catch(e){}
   const b1=$('freezeBarBtn'), b2=$('freezeBtn');
   if(b1){ b1.textContent='▶ สแกนต่อ'; b1.classList.add('on'); }
   if(b2){ b2.textContent='▶ สแกนต่อ'; b2.classList.add('on'); }
-  $('status').textContent='❄️ ค้างภาพไว้แล้ว · แตะจอเพื่อสแกนต่อ';
+  $('status').textContent='❄️ ค้างภาพไว้แล้ว · ตรวจสอบข้อมูลได้สบายตา';
   $('status').className='chip on';
-  toast('❄️ ค้างภาพแล้ว — แตะที่จอเพื่อสแกนต่อ');
+  toast('❄️ ค้างภาพไว้แล้ว — แตะปุ่มเดิมเพื่อสแกนต่อ');
 }
 
 function unfreezeFrame(){
@@ -594,8 +544,6 @@ function unfreezeFrame(){
   isFrozen=false;
   still.hidden=true;
   still.className='';
-  still.onclick=null;
-  const fo=$('freezeOverlay'); if(fo) fo.hidden=true;
   try{ video.play(); }catch(e){}
   const b1=$('freezeBarBtn'), b2=$('freezeBtn');
   if(b1){ b1.textContent='❄️ ค้างภาพ'; b1.classList.remove('on'); }
@@ -632,14 +580,14 @@ function updateRemoteAlert(){
   const listEl=$('raList');
   if(listEl){
     listEl.innerHTML=remoteDets.map(d=>{
-      const cr=classifyRemote(d.code, d.rowText||'');
-      if(!cr) return '';
+      const list=BY_CODE[d.code]||[], e=list[0]||{};
       const seqStr=d.row!=null?`<span class="ra-seq">ลำดับ <b>${d.row}</b></span>`:'';
+      const areaNote=list.some(x=>x.area)?`<small class="ra-area">⚠ ${list.map(x=>x.area).join(', ')}</small>`:'';
       return `<div class="ra-item">
         <span class="ra-badge">${d.code}</span>
         <div class="ra-desc">
-          <div>${seqStr} <b>${esc(cr.office)}</b> (${esc(cr.prov)})</div>
-          <small class="ra-area">${cr.label}</small>
+          <div>${seqStr} <b>${esc(e.office||'')}</b> (${esc(e.prov||'')})</div>
+          ${areaNote}
         </div>
       </div>`;
     }).join('');
@@ -654,18 +602,16 @@ function showBoxes(f,capRows){
     const code=asPostcode(w.text); if(!code) continue;
     const isRemote=!!BY_CODE[code];
     const b=f.toSrc(w.bbox), r=rowOf.get(w), row=r?.seq??null;
-    const rowText=r?.rowText||'';
     if(capRows&&row!=null&&capRows.get(row)?.code&&capRows.get(row).code!==code) continue;
     const prev=dets.find(d=>d.code===code&&Math.hypot((d.b.x0+d.b.x1)/2-(b.x0+b.x1)/2, (d.b.y0+d.b.y1)/2-(b.y0+b.y1)/2)<180);
     if(prev){
       prev.target=b; prev.t=now;
       if(row!=null) prev.row=row;
-      if(rowText) prev.rowText=rowText;
       prev.seenCount=(prev.seenCount||1)+1;
       if(isRemote) prev.isRemote=true;
     }
     else {
-      dets.push({code,isRemote,b:{...b},target:b,t:now,row,rowText,firstSeen:now,seenCount:1,locked:isRemote});
+      dets.push({code,isRemote,b:{...b},target:b,t:now,row,firstSeen:now,seenCount:1,locked:isRemote});
       if(isRemote){
         if(!seen.has(code)){ seen.add(code); freshRemote=true; }
       }
@@ -864,19 +810,11 @@ function review(cap){
       </div>
       <div class="tot">
         <div><small>อ่านได้</small><b>${cap.rows.length} แถว</b><small>${hi?`ลำดับ ${lo}–${hi}`:''}</small></div>
-        <div><small>ค่าบริการในภาพนี้</small><b>฿${baht(sum)}</b><small>${cap.total!=null?`รวมเงินท้ายใบ ฿${baht(cap.total)}`:'ภาพนี้ไม่มียอดรวม (ใบแรกของชุด)'}</small></div>
+        <div><small>ค่าบริการในภาพนี้</small><b>฿${baht(sum)}</b><small>${cap.total!=null?`รวมเงินในใบ ฿${baht(cap.total)}`:'ภาพนี้ไม่มียอดรวม'}</small></div>
       </div>
-      ${cap.total!=null && Math.round(sum*100)===Math.round(cap.total*100) ? `<div class="verdict ok" style="margin-top:8px">✓ ยอดตรงตามจริง! ครบ ${cap.rows.length} แถว ยอดรวม ฿${baht(sum)} ตรงกับยอดรวมเงินท้ายใบ ฿${baht(cap.total)}</div>` : ''}
-      ${cap.total!=null && Math.round(sum*100)<Math.round(cap.total*100) ? `<div class="verdict wait" style="margin-top:8px">ℹ ยอดรวมในภาพนี้ ฿${baht(sum)} จากยอดรวมเงินท้ายใบ ฿${baht(cap.total)} (ขาดอีก ฿${baht(cap.total - sum)})<br><small>เป็นใบสุดท้ายของชุดที่มีหลายใบ · กดบันทึกเพื่อรวมกับใบก่อนหน้าในชุดเดียวกัน</small></div>` : ''}
-      ${cap.total!=null && Math.round(sum*100)>Math.round(cap.total*100) ? `<div class="verdict bad" style="margin-top:8px">✗ ยอดไม่ตรง: รวมได้ ฿${baht(sum)} แต่ยอดในใบระบุ ฿${baht(cap.total)} (ต่างกัน ฿${baht(Math.abs(sum - cap.total))})</div>` : ''}
-      ${cap.total==null ? `<div class="verdict wait" style="margin-top:8px">💡 ใบนี้ไม่มียอด "รวมเงิน" (เป็นใบแรกของชุด)<small>สแกนได้ ${cap.rows.length} แถว (฿${baht(sum)}) 👉 กดบันทึกแล้วสแกนใบถัดไปต่อเพื่อรวมยอด</small></div>` : ''}
       ${hi?`<div class="cells big" style="margin-top:10px">${cells}</div><small style="color:var(--muted);font-size:12px">เขียว = อ่านได้ · ส้ม = ห่างไกล · กรอบแดง = ราคาไม่ชัด · เทา = อ่านไม่ได้</small>`:''}
       ${needFixCount?`<div class="verdict wait" style="margin-top:8px">${gaps.length?`อ่านไม่ได้ ลำดับ ${gaps.join(', ')}`:''}${gaps.length&&noP.length?' · ':''}${noP.length?`ไม่เห็นราคา ลำดับ ${noP.join(', ')}`:''}<small>บันทึกแล้วกดสแกนซ่อมส่วนที่ขาดต่อได้ทันที</small></div>`:''}
-      ${rem.length?`<div class="sec">พื้นที่ห่างไกล / เกาะ ในภาพนี้ (${rem.length} รายการ)</div><div class="list">${rem.map(r=>{
-        const cr=classifyRemote(r.code, r.rowText||'');
-        const feeCheck = r.price>=50 ? '<span style="color:var(--green)">✓ รวม +20 แล้ว</span>' : '<span style="color:var(--red)">⚠ ราคาเท่าแถวปกติ — ยังไม่บวก +20</span>';
-        return `<div class="item remote"><div><b>ลำดับ ${r.seq} · ${r.code}</b><small>${cr?esc(cr.label):''}<br>${feeCheck}</small></div><span class="r">฿${baht(r.price)}</span></div>`;
-      }).join('')}</div>`:''}
+      ${rem.length?`<div class="sec">พื้นที่ห่างไกลในภาพนี้</div><div class="list">${rem.map(r=>{const e=BY_CODE[r.code];return `<div class="item remote"><div><b>ลำดับ ${r.seq} · ${r.code}</b><small>${esc(e[0].office)} · ${esc(e[0].prov)}</small></div><span class="r">฿${baht(r.price)}</span></div>`;}).join('')}</div>`:''}
       <div class="sec">บันทึกลงใบไหน · แนะนำ: ${esc(sg.why)}</div>
       <div class="list">${sg.opts.map(o=>`<button class="item pick ${pick===o.sh.id?'sel':''}" data-t="${o.sh.id}"><div><b>ใบที่ ${o.sh.no}${o.sh.done?' · ครบแล้ว':''}</b><small>มีแล้ว ${Object.keys(o.sh.rows).length} แถว · ข้อมูลนี้ตรง ${o.m} · ไม่ตรง ${o.c}</small></div><span class="r">${pick===o.sh.id?'●':'○'}</span></button>`).join('')}
         <button class="item pick ${pick==='new'?'sel':''}" data-t="new"><div><b>ใบใหม่ (ใบที่ ${S.sheets.reduce((m,x)=>Math.max(m,x.no),0)+1})</b><small>ใบนำส่งอีกใบ ที่ลำดับเริ่มนับใหม่</small></div><span class="r">${pick==='new'?'●':'○'}</span></button>
@@ -1048,10 +986,9 @@ function draw(ts){
       drawBrackets(r.x, r.y, r.w, r.h, 12, '#ffb020', 2.5, true);
       ctx.fillStyle='rgba(255,176,32,.18)'; rr(r.x,r.y,r.w,r.h,4); ctx.fill();
 
-      const cr=classifyRemote(d.code, d.rowText||'');
       const list=BY_CODE[d.code], e=list[0];
       const t1=(d.row!=null?`${S.sheets.length>1&&d.no?`ใบ ${d.no} · `:''}ลำดับ ${d.row} · `:'')+`${d.code} · ${e.office}`;
-      const t2=cr ? `${cr.shortLabel} จ.${cr.prov}` : `${e.prov} [พื้นที่ห่างไกล]`;
+      const t2=`${e.prov}${list.some(x=>x.area)?' · ⚠ '+list.map(x=>x.area.replace('เฉพาะ','')).join('/'):''} [พื้นที่ห่างไกล]`;
 
       ctx.font='700 13px "IBM Plex Sans Thai",sans-serif';
       let lw=ctx.measureText(t1).width;
@@ -1095,16 +1032,8 @@ function draw(ts){
 
 /* ================= Panel: session → manifests → rows ================= */
 let view={k:'sess'}, armed=null;   // k: sess | sheet (id) | hist | old (session id)
-function remoteItem(r,multi){
-  const cr=classifyRemote(r.code, r.rowText||'');
-  const e=BY_CODE[r.code];
-  const feeCheck = r.price>=50
-    ? '<span style="color:var(--green)">✓ รวม +20 บาทแล้ว</span>'
-    : (r.suspect || (r.price!=null && r.price<50))
-      ? '<span style="color:var(--red)">⚠ ราคาเท่าแถวปกติ — ยังไม่บวก +20 หรือรหัสอ่านผิด</span>'
-      : '';
-  return `<div class="item remote"><div><b>${multi?`ใบ ${r.no} · `:''}ลำดับ ${r.seq} · ${r.code}</b><small>${cr?esc(cr.label):esc(e[0].office+' · '+e[0].prov)}${feeCheck?'<br>'+feeCheck:''}</small></div><span class="r">฿${baht(r.price)}</span></div>`;
-}
+function remoteItem(r,multi){ const e=BY_CODE[r.code];
+  return `<div class="item remote"><div><b>${multi?`ใบ ${r.no} · `:''}ลำดับ ${r.seq} · ${r.code}</b><small>${esc(e[0].office)} · ${esc(e[0].prov)}${e.some(x=>x.area)?' · ⚠ '+e.map(x=>x.area.replace('เฉพาะ','')).join(' / '):''}${r.suspect?'<br><span style="color:var(--red)">ราคาเท่าแถวปกติ — ยังไม่บวก +20 หรือรหัสอ่านผิด ตรวจอีกครั้ง</span>':''}</small></div><span class="r">฿${baht(r.price)}</span></div>`; }
 function sessionHTML(S,isCur){
   const ss=sessionSummary(S), multi=ss.list.length>1;
   const sheets=ss.list.map(({sh,a})=>{
@@ -1289,8 +1218,7 @@ async function liveLoop(k=0){
       if(!f) continue;
       collectLive(f); showBoxes(f);
       if(rotState.manual==null){
-        const maxEmpty = (innerHeight > innerWidth) ? 1 : 2;
-        if(f.pcs>=1){ rotState.empty=0; } else if(++rotState.empty >= maxEmpty){ rotState.empty=0; rotState.ri=(rotState.ri+1)%rotState.ROTS.length; }
+        if(f.pcs>=1){ rotState.empty=0; } else if(++rotState.empty>=3){ rotState.empty=0; rotState.ri=(rotState.ri+1)%rotState.ROTS.length; }
       }
     }catch(e){ await new Promise(r=>setTimeout(r,250)); }
   }
