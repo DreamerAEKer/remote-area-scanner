@@ -261,7 +261,7 @@ function classifyRemote(code, rowText=''){
     };
   }
 }
-const APP_VERSION='v28';   // shown in the app; every version is listed at versions.html
+const APP_VERSION='v29';   // shown in the app; every version is listed at versions.html
 const $=id=>document.getElementById(id);
 document.addEventListener('DOMContentLoaded',()=>{ const v=$('ver'); if(v) v.textContent=APP_VERSION; });
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -745,10 +745,9 @@ function tableRows(words){
   const totals=W.filter(x=>!onRow.has(x)&&x.cy>lowest).map(x=>({x,m:asMoney(x.t)})).filter(o=>o.m!=null&&o.m>maxP&&o.m>=100&&o.m>=pageSum);
   const tot=totals.sort((a,b)=>b.m-a.m)[0];
 
-  // Thailand Post manifest: Page 1 has maximum 37 rows.
-  // Rows > 37 ONLY exist if there is a verified Page 2 (many anchors > 37 or grand total indicating page 2).
-  const isPage2 = anchors.some(a => a.readSeq > 37) && (tot != null || anchors.length >= 10);
-  const maxAllowedSeq = isPage2 ? 74 : 37;
+  // Thailand Post manifest: Page 1 has maximum 37 rows. Page 2 starts at 38 and ends at 59.
+  const isPage2 = anchors.some(a => a.readSeq > 37) || rows.some(r => r.serial != null && r.serial >= 42094939);
+  const maxAllowedSeq = isPage2 ? 59 : 37;
   const good=rows.filter(r=>r.seq!=null&&r.seq>0&&r.seq<=maxAllowedSeq);
   const fitOk=good.length>=1;
   // the last row of the manifest is the one right above the total
@@ -785,8 +784,8 @@ const FILTERS=['grayscale(1) contrast(1.35)','grayscale(1) contrast(2)','none'];
 const canv=[];
 async function readFrame(filter,rot,src,k=0){
   const el=src?.el??(mode==='cam'?video:still), [sw,sh]=src?[src.w,src.h]:srcSize(); if(!sw) return null;
-  // 560px for live camera (ultra-fast AR speed ~300ms), 1800px for still capture (super sharp)
-  const maxDim = (mode==='cam'&&!src) ? 560 : 1800;
+  // 850px for live camera (crystal-clear postcode & fee recognition), 1800px for still capture
+  const maxDim = (mode==='cam'&&!src) ? 850 : 1800;
   const s = (mode==='cam'&&!src) ? Math.min(1, maxDim/Math.max(sw,sh)) : Math.min(2.5, maxDim/Math.max(sw,sh));
   const cv=k?(canv[k] ||= document.createElement('canvas')):grab;
   const toSrc=drawRotated(el,sw,sh,s,rot,filter,cv);
