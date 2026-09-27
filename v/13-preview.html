@@ -261,7 +261,7 @@ function classifyRemote(code, rowText=''){
     };
   }
 }
-const APP_VERSION='v24';   // shown in the app; every version is listed at versions.html
+const APP_VERSION='v25';   // shown in the app; every version is listed at versions.html
 const $=id=>document.getElementById(id);
 document.addEventListener('DOMContentLoaded',()=>{ const v=$('ver'); if(v) v.textContent=APP_VERSION; });
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -279,6 +279,32 @@ const KEY='ras-sessions-v2';
 let sessions=[], curId=null;
 const uid=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,6);
 const newSheet=S=>{ const sh={id:uid(),no:(S.sheets.reduce((m,x)=>Math.max(m,x.no),0))+1,rows:{},totals:{},manualTotal:null,last:{},done:false}; S.sheets.push(sh); S.active=sh.id; return sh; };
+function mergeSheets(S){
+  if(!S || S.sheets.length <= 1) return;
+  const target = S.sheets[0];
+  for(let i = 1; i < S.sheets.length; i++){
+    const sh = S.sheets[i];
+    for(const [k, r] of Object.entries(sh.rows)){
+      const row = (target.rows[k] ||= {price:{}, code:{}, trk:{}});
+      row.trk ||= {};
+      for(const [pk, pv] of Object.entries(r.price||{})) inc(row.price, pk, pv);
+      for(const [ck, cv] of Object.entries(r.code||{})) inc(row.code, ck, cv);
+      for(const [tk, tv] of Object.entries(r.trk||{})) inc(row.trk, tk, tv);
+      if(r.trackNo){ row.trackNo ||= {}; for(const [tn, v] of Object.entries(r.trackNo)) inc(row.trackNo, tn, v); }
+      if(r.manual != null) row.manual = r.manual;
+    }
+    for(const [tk, tv] of Object.entries(sh.totals||{})) inc(target.totals, tk, tv);
+    for(const [lk, lv] of Object.entries(sh.last||{})) inc(target.last, lk, lv);
+    if(sh.manualTotal != null) target.manualTotal = sh.manualTotal;
+  }
+  S.sheets = [target];
+  S.active = target.id;
+  target.done = false;
+  checkDone(target);
+  persist();
+  refreshUI();
+  toast(`✓ รวมข้อมูลทุกใบเข้าด้วยกันเป็นใบเดียวแล้ว (${Object.keys(target.rows).length} แถว)`, true);
+}
 try{
   const v2=JSON.parse(localStorage.getItem(KEY));
   if(v2?.list){ sessions=v2.list; curId=v2.cur; }
@@ -358,12 +384,8 @@ function routeScore(sh,rows){
 function suggest(S,rows){
   const A=activeSheet(S), opts=S.sheets.filter(sh=>!sheetEmpty(sh)||sh.id===A.id).map(sh=>({sh,...routeScore(sh,rows)}));
   const best=opts.filter(o=>o.m>=2&&o.m>o.c).sort((a,b)=>b.m-a.m)[0];
-  if(best) return {opts,target:best.sh.id,why:`ตรงกับใบที่ ${best.sh.no} ${best.m} จุด${best.c?` (ไม่ตรง ${best.c})`:''}${best.sh.done?' — ใบนี้ครบแล้ว ข้อมูลนี้ซ้ำ':''}`};
-  if(sheetEmpty(A)) return {opts,target:A.id,why:`ใบที่ ${A.no} ยังว่าง`};
-  const sa=opts.find(o=>o.sh.id===A.id);
-  if(sa.c>=3) return {opts,target:'new',why:`ลำดับเดียวกับใบที่ ${A.no} แต่รหัส/เลขสิ่งของไม่ตรง ${sa.c} จุด — น่าจะเป็นใบใหม่`};
-  if(A.done) return {opts,target:'new',why:`ใบที่ ${A.no} ครบแล้ว — น่าจะเป็นใบถัดไป`};
-  return {opts,target:A.id,why:`ลำดับไม่ซ้ำกับที่มี — น่าจะเป็นหน้าต่อของใบที่ ${A.no}`};
+  if(best) return {opts,target:best.sh.id,why:`ตรงกับใบที่ ${best.sh.no} ${best.m} จุด`};
+  return {opts,target:A.id,why:`ใบเดิม (ใบที่ ${A.no})`};
 }
 
 /* ---- UI: progress bar over the camera + toast ---- */
@@ -537,13 +559,42 @@ function tableRows(words){
     return {p,y:p.cy,readSeq,code:p.pc,codeWord:p.w,price,priceWord,serial,trackNo,line:[p,...left,...right],rowText};
   });
 
-  // fit y ≈ a + pitch·seq from the rows whose number was read, keep the consistent ones
+  // 1. Thailand Post Manifest: Tracking barcode serial runs in 1-to-1 sequence with row number!
+  // E.g. EQ420949020TH (seq 1) -> serial = 42094902. Offset = serial - seq.
+  const withBoth = rows.filter(r => r.readSeq != null && r.serial != null);
+  let baseOffset = null;
+  if(withBoth.length >= 1){
+    baseOffset = median(withBoth.map(r => r.serial - r.readSeq));
+  } else {
+    try{
+      const A = activeSheet(cur());
+      const knownInA = Object.entries(A.rows).map(([seq, r]) => ({seq: +seq, serial: topVote(r.trk)})).filter(x => x.serial != null);
+      if(knownInA.length >= 1){
+        baseOffset = median(knownInA.map(x => x.serial - x.seq));
+      }
+    }catch(e){}
+  }
+  // Deduce sequence directly from serial offset
+  if(baseOffset != null){
+    for(const r of rows){
+      if(r.serial != null){
+        const deduced = r.serial - baseOffset;
+        if(deduced > 0 && deduced < 300){
+          r.readSeq = deduced;
+          r.seq = deduced;
+        }
+      }
+    }
+  }
+
+  // 2. fit y ≈ a + pitch·seq from the rows whose number was read / deduced
   const anchors=rows.filter(r=>r.readSeq!=null);
   const slopes=[]; for(let i=0;i<anchors.length;i++) for(let j=i+1;j<anchors.length;j++){ const ds=anchors[j].readSeq-anchors[i].readSeq; if(ds) slopes.push((anchors[j].y-anchors[i].y)/ds); }
   const pitch=median(slopes.filter(v=>v>0));
   let inl=[];
   if(pitch){ const a0=median(anchors.map(r=>r.y-pitch*r.readSeq)); inl=anchors.filter(r=>Math.abs(r.y-(a0+pitch*r.readSeq))<0.4*pitch); }
   for(const r of rows){
+    if(r.seq != null) continue;
     if(inl.length>=3){
       // local fit on the nearest good anchors copes with perspective in a hand-held photo
       const near=[...inl].sort((a,b)=>Math.abs(a.y-r.y)-Math.abs(b.y-r.y)).slice(0,5);
@@ -554,12 +605,14 @@ function tableRows(words){
       r.seq=r.readSeq;
     }
   }
-  // Robust Fallback: If left "ลำดับ" column is out of frame, order rows top-to-bottom by vertical Y
-  const sortedByY=rows.slice().sort((a,b)=>a.y-b.y);
-  let seqCounter=(anchors.length ? Math.min(...anchors.map(a=>a.readSeq)) : 1);
-  for(let i=0; i<sortedByY.length; i++){
-    if(sortedByY[i].seq==null || sortedByY[i].seq<=0){
-      sortedByY[i].seq = seqCounter + i;
+  // 3. Fallback ONLY if known anchors exist to interpolate
+  if(anchors.length > 0){
+    const minAnchor = Math.min(...anchors.map(a=>a.readSeq));
+    const sortedByY=rows.slice().sort((a,b)=>a.y-b.y);
+    for(let i=0; i<sortedByY.length; i++){
+      if(sortedByY[i].seq==null || sortedByY[i].seq<=0){
+        sortedByY[i].seq = minAnchor + i;
+      }
     }
   }
   const good=rows.filter(r=>r.seq!=null&&r.seq>0&&r.seq<1000);
@@ -893,17 +946,11 @@ function collectLive(f){
   const need=repairNeed(A);
   const fresh=rows.filter(r=>(!isSaved(A,r)||(need&&need.has(r.seq)))&&!clash.includes(r));
   const newTotal=cap.total!=null&&topVote(A.totals)!==cap.total.toFixed(2);
-  const different=!sheetEmpty(A)&&(sa.c>=2||clash.length>=2);
+  const different=!sheetEmpty(A)&&(sa.c>=4&&sa.m===0);
   if(!different){
-    if(!A.done){ if(fresh.length||newTotal){ saveTo(A,{...cap,rows:fresh},true); flashSaved(); } return; }
-    if(fresh.length<3) return;                              // finished manifest seen again
-    ask({target:'new',why:`ใบที่ ${A.no} ครบแล้ว แต่ตรวจพบแถวใหม่ ${fresh.length} แถว`},cap); return;
+    if(fresh.length||newTotal){ saveTo(A,{...cap,rows:fresh},true); flashSaved(); }
+    return;
   }
-  if(rows.length<3) return;                                // not enough to decide yet
-  const other=S.sheets.filter(sh=>sh!==A&&!sheetEmpty(sh)).map(sh=>({sh,...routeScore(sh,rows)})).filter(o=>o.m>=2&&o.c===0).sort((a,b)=>b.m-a.m)[0];
-  if(other){ if(other.sh.done) return; ask({target:other.sh.id,why:`ตรงกับใบที่ ${other.sh.no} ${other.m} จุด`},cap); return; }
-  const why=[bySerial?`เลขสิ่งของไม่ตรง ${bySerial} แถว`:'',byCode?`รหัส ปณ. ไม่ตรง ${byCode} แถว`:'',!clash.length&&sa.c?`ลำดับไม่ต่อเนื่อง ${sa.c} แถว`:''].filter(Boolean).join(' · ');
-  ask({target:'new',why:`ไม่ตรงกับใบที่ ${A.no}: ${why}`},cap);
 }
 // Repair: the user picked a manifest to fix; its missing / unreadable rows are wanted, and a clear new reading
 // of those rows replaces the old one.
@@ -947,7 +994,7 @@ function review(cap){
     const S=cur(); let sg=suggest(S,cap.rows);
     const rs=repair&&repair.sess===curId&&S.sheets.find(x=>x.id===repair.sheet);
     if(rs&&routeScore(rs,cap.rows).c<2) sg={...sg,target:rs.id,why:`กำลังซ่อมใบที่ ${rs.no}`};
-    let pick=sg.target;
+    let pick=S.active || S.sheets[0].id;
     const seqs=cap.rows.map(r=>r.seq), lo=seqs.length?Math.min(...seqs):0, hi=seqs.length?Math.max(...seqs):0;
     const by=cap.map, sum=cap.rows.reduce((t,r)=>t+Math.round((r.price||0)*100),0)/100;
     let cells=''; for(let i=lo;i<=hi&&hi;i++){ const r=by.get(i); cells+=`<i class="${!r?'':r.price==null||!okSatang(r.price)?'q':BY_CODE[r.code]?'rm':'ok'}" title="${i}"></i>`; }
@@ -981,14 +1028,17 @@ function review(cap){
         const trkStr = r.trackNo ? `<span style="color:#5fe3ff;font-family:monospace;font-size:11px;margin-left:4px">${esc(r.trackNo)}</span>` : '';
         return `<div class="item remote"><div><b>ลำดับ ${r.seq} · ${r.code}${trkStr}</b><small>${cr?esc(cr.label):''}<br>${feeCheck}</small></div><span class="r">฿${baht(r.price)}</span></div>`;
       }).join('')}</div>`:''}
-      ${S.sheets.length<=1 || pick===S.active ? `
+      ${S.sheets.length<=1 ? `
         <div class="verdict ok" style="margin-top:12px;font-size:13px;background:rgba(74,222,128,0.1);color:#4ade80;border:1px solid rgba(74,222,128,0.25)">
-          📄 บันทึกรวมเข้าชุดใบนำส่งนี้โดยอัตโนมัติ (เป็นชุดเดียวกัน)
+          📄 บันทึกรวมเข้าใบนำส่งนี้โดยอัตโนมัติ (เป็นใบเดียวกัน)
         </div>
       ` : `
-        <div class="sec">บันทึกลงใบไหน · แนะนำ: ${esc(sg.why)}</div>
-        <div class="list">${sg.opts.map(o=>`<button class="item pick ${pick===o.sh.id?'sel':''}" data-t="${o.sh.id}"><div><b>ใบที่ ${o.sh.no}${o.sh.done?' · ครบแล้ว':''}</b><small>มีแล้ว ${Object.keys(o.sh.rows).length} แถว · ข้อมูลนี้ตรง ${o.m} · ไม่ตรง ${o.c}</small></div><span class="r">${pick===o.sh.id?'●':'○'}</span></button>`).join('')}
-          <button class="item pick ${pick==='new'?'sel':''}" data-t="new"><div><b>ใบใหม่ (ใบที่ ${S.sheets.reduce((m,x)=>Math.max(m,x.no),0)+1})</b><small>ใบนำส่งอีกใบ ที่ลำดับเริ่มนับใหม่</small></div><span class="r">${pick==='new'?'●':'○'}</span></button>
+        <button class="pri" id="rvMergeAll" style="width:100%;margin-top:12px;margin-bottom:8px;background:#22c55e;color:#000;font-weight:700;padding:10px;border-radius:10px;font-size:14px;border:none">
+          🔗 เป็นใบเดิมใบเดียว — รวมข้อมูลทุกใบเข้าด้วยกัน (${S.sheets.reduce((n,x)=>n+Object.keys(x.rows).length,0)} แถว)
+        </button>
+        <div class="sec">บันทึกลงใบไหน (ค่าเริ่มต้น: ใบเดิม)</div>
+        <div class="list">${S.sheets.map(sh=>`<button class="item pick ${pick===sh.id?'sel':''}" data-t="${sh.id}"><div><b>ใบที่ ${sh.no}${sh.id===S.active?' (ใบเดิม · กำลังสแกน)':''}</b><small>มีแล้ว ${Object.keys(sh.rows).length} แถว</small></div><span class="r">${pick===sh.id?'●':'○'}</span></button>`).join('')}
+          <button class="item pick ${pick==='new'?'sel':''}" data-t="new"><div><b>ใบใหม่ (ใบที่ ${S.sheets.reduce((m,x)=>Math.max(m,x.no),0)+1})</b><small>เฉพาะเมื่อเป็นใบนำส่งคนละใบจริง ๆ</small></div><span class="r">${pick==='new'?'●':'○'}</span></button>
         </div>
       `}
       ${dup?'<div class="verdict ok" style="margin-top:10px">ใบนี้สแกนครบแล้ว — ไม่ต้องบันทึกซ้ำ</div>':''}
@@ -999,12 +1049,14 @@ function review(cap){
       </div>`;
 
       $('reviewIn').querySelectorAll('.pick').forEach(b=>b.onclick=()=>{ pick=b.dataset.t; render(); });
+      const rvMerge = $('rvMergeAll');
+      if(rvMerge) rvMerge.onclick = () => { mergeSheets(S); pick = S.active; render(); };
       $('rvBack').onclick=()=>closeReview(null);
       $('rvClose').onclick=()=>closeReview(null);
 
       const doSave=()=>{
         if(dup) return null;
-        const sh=pick==='new'?newSheet(S):S.sheets.find(x=>x.id===pick);
+        const sh=pick==='new'?newSheet(S):(S.sheets.find(x=>x.id===pick)||activeSheet(S));
         saveTo(sh,cap);
         return sh;
       };
@@ -1061,18 +1113,18 @@ async function readCapture(src){
   // 1st pass: fast 1280px with default/known orientation
   let rot=currentRot();
   let f=await readFrame(FILTERS[0],rot,src,0);
-  if(rotState.manual==null && f.pcs<2){
-    for(const r of [90,270,180,0]){
+  if(rotState.manual==null && (!f || f.pcs<15)){
+    for(const r of [90,270,0,180]){
       if(r===rot) continue;
       const g=await readFrame(FILTERS[0],r,src,0);
-      if(g&&g.pcs>f.pcs){ f=g; rot=r; }
-      if(f.pcs>=3) break;
+      if(g && (!f || g.pcs>f.pcs)){ f=g; rot=r; }
+      if(f && f.pcs>=25) break;
     }
   }
-  showScanLoading(65, '⏳ กำลังอ่านตารางทั้งใบ...', `อ่านได้แล้ว ${f.tr.rows.length} แถว (${f.pcs} รหัส ปณ.)`);
+  showScanLoading(65, '⏳ กำลังอ่านตารางทั้งใบ...', `อ่านได้แล้ว ${f?.tr?.rows?.length||0} แถว (${f?.pcs||0} รหัส ปณ.)`);
   let frames=[f];
   // Parallel 2nd pass ONLY if 1st pass had poor fit or few rows
-  if(f.tr.rows.length<8 || !f.tr.fitOk){
+  if(f && (f.tr.rows.length<8 || !f.tr.fitOk)){
     const f2=await readFrame(FILTERS[1],rot,src,1%workers.length);
     if(f2) frames.push(f2);
   }
@@ -1256,6 +1308,13 @@ function sessionHTML(S,isCur){
     ${allDone?'<div class="verdict ok">✓ ทุกใบครบและยอดตรง</div>':''}
     <div class="sec">พื้นที่ห่างไกล / เกาะ (${ss.remote.length+ss.loose.length})</div>
     <div class="list">${rem||'<div class="empty">ไม่พบ</div>'}</div>
+    ${isCur && ss.list.length > 1 ? `
+      <div style="background:rgba(34,197,94,0.14);border:1.5px solid var(--green);border-radius:12px;padding:12px;margin:12px 0;text-align:center">
+        <b style="color:var(--green);font-size:14px">📄 เป็นใบนำส่งใบเดิมใช่ไหม?</b>
+        <p style="font-size:12px;color:var(--muted);margin:4px 0 8px">มีข้อมูลแยกอยู่ ${ss.list.length} ใบ แตะปุ่มนี้เพื่อรวมทุกแถวเข้าเป็นใบเดียว (${ss.rows} แถว)</p>
+        <button class="pri" id="sMergeAll" style="background:var(--green);color:#000;font-weight:700;padding:8px 18px;border:none">🔗 รวมข้อมูลทุกใบเป็นใบเดียว</button>
+      </div>
+    ` : ''}
     <div class="sec">ใบนำส่ง (แตะเพื่อดู / แก้)</div>
     <div class="list">${sheets}</div>
     <div class="acts">${isCur
@@ -1334,6 +1393,7 @@ function renderSheet(){
     $('sHist').onclick=()=>{ view={k:'hist'}; renderSheet(); };
     if($('sToCam')) $('sToCam').onclick=()=>{ $('sheet').hidden=true; };
     if(isCur) el.querySelectorAll('[data-sheet]').forEach(b=>b.onclick=()=>{ view={k:'sheet',id:b.dataset.sheet}; renderSheet(); });
+    const mBtn = $('sMergeAll'); if(mBtn) mBtn.onclick = () => { mergeSheets(S); renderSheet(); };
     const del=$('sDel');
     del.onclick=()=>{ if(armed!=='del'){ armed='del'; del.textContent='แตะอีกครั้งเพื่อยืนยัน'; return; }
       sessions=sessions.filter(x=>x.id!==S.id); if(S.id===curId) newSession(); else persist();
