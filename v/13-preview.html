@@ -260,7 +260,7 @@ function classifyRemote(code, rowText=''){
     };
   }
 }
-const APP_VERSION='v21';   // shown in the app; every version is listed at versions.html
+const APP_VERSION='v22';   // shown in the app; every version is listed at versions.html
 const $=id=>document.getElementById(id);
 document.addEventListener('DOMContentLoaded',()=>{ const v=$('ver'); if(v) v.textContent=APP_VERSION; });
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -320,7 +320,11 @@ function sheetSummary(sh){
   remote.forEach(r=>r.suspect=usual!=null&&r.price!=null&&r.price<=usual);
   const noPrice=rows.filter(r=>r.price==null), unsure=rows.filter(r=>r.unsure);
   const complete=total!=null&&n>0&&!missing.length&&!noPrice.length&&diff===0;
-  return {rows,sum:cents/100,n,missing,total,diff,remote,noPrice,unsure,complete};
+  const p1Rows=rows.filter(r=>r.seq<=37), p2Rows=rows.filter(r=>r.seq>37);
+  const p1Sum=p1Rows.reduce((t,r)=>t+(r.price!=null?Math.round(r.price*100):0),0)/100;
+  const p2Sum=p2Rows.reduce((t,r)=>t+(r.price!=null?Math.round(r.price*100):0),0)/100;
+  const hasPages=p2Rows.length>0||(n>37);
+  return {rows,sum:cents/100,n,missing,total,diff,remote,noPrice,unsure,complete,p1Rows,p2Rows,p1Sum,p2Sum,hasPages};
 }
 function sessionSummary(S){
   const list=S.sheets.map(sh=>({sh,a:sheetSummary(sh)})).filter(x=>!sheetEmpty(x.sh)||x.sh.id===S.active);
@@ -381,20 +385,23 @@ function refreshUI(){
   let guideHTML = '';
   if(a.rows.length > 0){
     const minS = a.rows[0].seq, maxS = a.rows.at(-1).seq;
+    const scannedStr = a.hasPages
+      ? `หน้า 1 (1–37) · หน้า 2 (38–${maxS}) รวม ${a.rows.length} แถว`
+      : `ลำดับ ${minS}–${maxS} (${a.rows.length} แถว)`;
     if(a.missing.length > 0){
       const missList = a.missing.length <= 6 ? a.missing.join(', ') : `${a.missing.slice(0, 5).join(', ')}... (ขาด ${a.missing.length} แถว)`;
       const missPos = a.missing[0] > maxS ? '👇 เลื่อนกล้องลง' : (a.missing.at(-1) < minS ? '👆 เลื่อนกล้องขึ้น' : '🔍 เล็งแถวที่ยังว่าง');
       guideHTML = `<div style="margin-top:6px;font-size:12px;color:#ffe2a8;display:flex;align-items:center;justify-content:space-between;gap:6px">
-        <span>🟢 สแกนแล้ว: ลำดับ ${minS}–${maxS} (${a.rows.length} แถว)</span>
+        <span>🟢 สแกนแล้ว: ${scannedStr}</span>
         <span style="color:var(--red);font-weight:700">⚠️ ขาด: ลำดับ ${missList} ${missPos}</span>
       </div>`;
     } else if(a.total == null){
       guideHTML = `<div style="margin-top:6px;font-size:12px;color:var(--green)">
-        ✓ สแกนได้ลำดับ ${minS}–${maxS} (${a.rows.length} แถว · ฿${baht(a.sum)}) 👉 เลื่อนกล้องลงท้ายใบเพื่ออ่าน "รวมเงิน"
+        ✓ สแกนได้ ${scannedStr} · ฿${baht(a.sum)} 👉 เลื่อนกล้องลงท้ายใบเพื่ออ่าน "รวมเงิน"
       </div>`;
     } else {
       guideHTML = `<div style="margin-top:6px;font-size:12px;color:var(--green)">
-        ✓ ครบทุกแถว ลำดับ 1–${a.n} (${a.n} แถว) ตรงกับยอดรวมเงิน ฿${baht(a.total)}
+        ✓ ครบทุกหน้า ${a.hasPages ? `(หน้า 1: ${a.p1Rows.length} แถว + หน้า 2: ${a.p2Rows.length} แถว)` : ''} รวม ${a.n} แถว ฿${baht(a.sum)} ตรงกับยอดรวมเงิน ฿${baht(a.total)}
       </div>`;
     }
   }
@@ -425,7 +432,18 @@ function checkDone(sh){
 
 /* ================= Reading a frame ================= */
 const FIX={O:'0',o:'0',D:'0',Q:'0',I:'1',l:'1','|':'1',i:'1',S:'5',s:'5',B:'8',Z:'2',z:'2',G:'6'};
-function asMoney(t){ t=String(t??'').replace(/^[^\d]+|[^\d]+$/g,''); return /^\d{1,3}(,\d{3})+\.\d{2}$|^\d{1,6}\.\d{2}$/.test(t)?parseFloat(t.replace(/,/g,'')):null; }
+function asMoney(t){
+  if(!t) return null;
+  t=String(t).trim().replace(/^[^\d]+|[^\d]+$/g,'');
+  if(/^\d{1,4},\d{2}$/.test(t)) t=t.replace(',', '.');
+  t=t.replace(/\.[oO0]{2}$/, '.00');
+  if(/^\d{1,3}(,\d{3})+\.\d{2}$|^\d{1,6}\.\d{2}$/.test(t)) return parseFloat(t.replace(/,/g,''));
+  if(/^\d{2,3}$/.test(t)){
+    const n=parseInt(t,10);
+    if([20,25,30,32,35,37,40,42,45,50,52,55,60,65,70,75,80,85,90,95,100,115,120,130,140,150,160,180,200].includes(n)) return n;
+  }
+  return null;
+}
 const asSeq=t=>{ t=String(t??'').replace(/[.)\]]$/,''); return /^\d{1,3}$/.test(t)&&+t>0?+t:null; };
 function asSerial(t){   // 13-character item number, e.g. EQ420949020TH → running serial 42094902
   t=String(t??'').replace(/[^A-Za-z0-9]/g,'').toUpperCase(); if(t.length!==13) return null;
@@ -481,7 +499,7 @@ function tableRows(words){
   const next=(a,dir)=>{ let best=null;
     for(const x of W){ if(x===a) continue;
       const dx=dir>0?x.b.x0-a.b.x1:a.b.x0-x.b.x1; if(dx<-a.h*.3) continue;
-      if(Math.abs(x.cy-a.cy)>0.6*Math.max(a.h,x.h)) continue;
+      if(Math.abs(x.cy-a.cy)>0.8*Math.max(a.h,x.h)) continue;
       if(!best||dx<best.dx) best={x,dx}; }
     return best?.x; };
   const walk=(a,dir)=>{ const out=[]; for(let k=0;k<30;k++){ a=next(a,dir); if(!a||out.includes(a)) break; out.push(a); } return out; };
@@ -491,15 +509,28 @@ function tableRows(words){
   if(pcs.length>=3){ const mx=median(pcs.map(x=>x.b.x0)); pcs=pcs.filter(x=>Math.abs(x.b.x0-mx)<3*x.h); }
   const rows=pcs.map(p=>{
     const left=walk(p,-1), right=walk(p,1);
-    const first=left.at(-1); const readSeq=first?asSeq(first.t):null;
-    const money=right.map(x=>asMoney(x.t)).filter(m=>m!=null&&m<10000);
-    const satangM=money.filter(m=>okSatang(m));
-    const price=satangM.length?satangM.at(-1):(money.length?money.at(-1):null);
-    const serial=right.map(x=>asSerial(x.t)).find(v=>v!=null)??null;
-    const rightStr=right.map(x=>x.t.replace(/[^A-Za-z0-9]/g,'')).join('');
-    const trkMatch=rightStr.match(/[A-Za-z]{2}\d{9}[A-Za-z]{2}/);
-    const trackNo=trkMatch?trkMatch[0].toUpperCase():null;
-    const rowText=[...left,p,...right].map(x=>x.t).join(' ');
+    const rowBandH = Math.max(14, p.h * 1.0);
+    const rowLeft = W.filter(x => x.cx < p.cx && Math.abs(x.cy - p.cy) <= rowBandH).sort((a,b) => b.cx - a.cx);
+    const rowRight = W.filter(x => x.cx > p.cx && Math.abs(x.cy - p.cy) <= rowBandH).sort((a,b) => a.cx - b.cx);
+
+    let readSeq = (left.at(-1) ? asSeq(left.at(-1).t) : null) ?? (rowLeft.length ? asSeq(rowLeft.at(-1).t) : null);
+    if(readSeq == null && rowLeft.length){
+      for(let i = rowLeft.length - 1; i >= 0; i--){
+        const s = asSeq(rowLeft[i].t);
+        if(s != null){ readSeq = s; break; }
+      }
+    }
+
+    const allRight = [...right, ...rowRight.filter(x => !right.includes(x))];
+    const money = allRight.map(x => asMoney(x.t)).filter(m => m != null && m < 10000);
+    const satangM = money.filter(m => okSatang(m));
+    const price = satangM.length ? satangM.at(-1) : (money.length ? money.at(-1) : null);
+
+    const serial = allRight.map(x => asSerial(x.t)).find(v => v != null) ?? null;
+    const rightStr = allRight.map(x => x.t.replace(/[^A-Za-z0-9]/g,'')).join('');
+    const trkMatch = rightStr.match(/[A-Za-z]{2}\d{9}[A-Za-z]{2}/);
+    const trackNo = trkMatch ? trkMatch[0].toUpperCase() : null;
+    const rowText = [...rowLeft.slice().reverse(), p, ...rowRight].map(x => x.t).join(' ');
     return {p,y:p.cy,readSeq,code:p.pc,codeWord:p.w,price,serial,trackNo,line:[p,...left,...right],rowText};
   });
 
@@ -571,8 +602,8 @@ const FILTERS=['grayscale(1) contrast(1.35)','grayscale(1) contrast(2)','none'];
 const canv=[];
 async function readFrame(filter,rot,src,k=0){
   const el=src?.el??(mode==='cam'?video:still), [sw,sh]=src?[src.w,src.h]:srcSize(); if(!sw) return null;
-  // Google Glass AR Fast-Path: 720px for live camera (ultra-fast ~180-220ms), 1800px for still capture (super sharp)
-  const maxDim = (mode==='cam'&&!src) ? 720 : 1800;
+  // 1080px for live camera (sharp digits for fee & seq columns ~250ms), 1800px for still capture (super sharp)
+  const maxDim = (mode==='cam'&&!src) ? 1080 : 1800;
   const s = (mode==='cam'&&!src) ? Math.min(1, maxDim/Math.max(sw,sh)) : Math.min(2.5, maxDim/Math.max(sw,sh));
   const cv=k?(canv[k] ||= document.createElement('canvas')):grab;
   const toSrc=drawRotated(el,sw,sh,s,rot,filter,cv);
@@ -762,6 +793,7 @@ function saveTo(sh,cap,quiet){
 // is this row already saved in the manifest with the same code and charge?
 function isSaved(sh,r){ const row=sh.rows[r.seq]; if(!row||topVote(row.code)!==r.code) return false;
   const ts=topVote(row.trk); if(ts!=null&&r.serial!=null&&Math.abs(r.serial-(+ts))>1) return false;
+  if(r.price!=null && row.manual==null && topVote(row.price)==null) return false;
   return row.manual!=null||topVote(row.price)!=null; }
 // the saved row at this ลำดับ says something else: another postcode, or another item number
 function contradicts(sh,r){ const row=sh.rows[r.seq]; if(!row) return false;
@@ -770,29 +802,38 @@ function contradicts(sh,r){ const row=sh.rows[r.seq]; if(!row) return false;
   return false; }
 
 /* ---- automatic collection from the live camera ----
-   A row is saved only after the same ลำดับ + postcode + charge is read in 3 separate frames, so a blurry or
-   moving frame cannot put wrong data in. When the rows look like another manifest, the user is asked first. */
-const CONF=3; let buf=new Map(), totBuf={}, frameNo=0, asking=null;
+   A row is saved once confirmed in 2 frames. Real-time fee and sequence collection
+   stream dynamically into the manifest. */
+const CONF=2; let buf=new Map(), totBuf={}, frameNo=0, asking=null;
 function collectLive(f){
   if(!f.tr.fitOk||asking) return;
   const now=Date.now(); frameNo++;
   for(const r of f.tr.rows){
-    const k=r.seq+'|'+r.code; const o=buf.get(k)||{seq:r.seq,code:r.code,n:0,price:{},serial:{},fr:-1};
+    const k=r.seq+'|'+r.code; const o=buf.get(k)||{seq:r.seq,code:r.code,n:0,price:{},serial:{},trackNo:{},fr:-1};
     // same ลำดับ and postcode but another item number: a different document is in view, start confirming again
-    if(r.serial!=null){ const ts=topVote(o.serial); if(ts!=null&&Math.abs(r.serial-(+ts))>1){ o.n=0; o.price={}; o.serial={}; } }
+    if(r.serial!=null){ const ts=topVote(o.serial); if(ts!=null&&Math.abs(r.serial-(+ts))>1){ o.n=0; o.price={}; o.serial={}; o.trackNo={}; } }
     if(o.fr!==frameNo){ o.n++; o.fr=frameNo; }
-    if(r.price!=null&&okSatang(r.price)) inc(o.price,r.price.toFixed(2));
+    if(r.price!=null) inc(o.price,r.price.toFixed(2),okSatang(r.price)?1:0.4);
     if(r.serial!=null) inc(o.serial,r.serial);
+    if(r.trackNo) inc(o.trackNo,r.trackNo);
     o.t=now; buf.set(k,o);
   }
   if(f.tr.total!=null&&okSatang(f.tr.total)){ const k=f.tr.total.toFixed(2), o=totBuf[k]||{n:0,last:{}}; o.n++; if(f.tr.lastSeq) inc(o.last,f.tr.lastSeq); o.t=now; totBuf[k]=o; }
   for(const [k,o] of buf) if(now-o.t>20000) buf.delete(k);
   for(const k in totBuf) if(now-totBuf[k].t>20000) delete totBuf[k];
-  // confirmed rows: seen in CONF frames with the same charge at least twice (one per ลำดับ)
+  // confirmed rows: seen in at least CONF frames
   const best=new Map();
-  for(const o of buf.values()){ const p=topVote(o.price); if(o.n<CONF||p==null||o.price[p]<2||frameNo-o.fr>2) continue;   // only what is in view now
-    const cur_=best.get(o.seq); if(!cur_||o.fr>cur_.fr||(o.fr===cur_.fr&&o.n>cur_.n)) best.set(o.seq,o); }
-  const rows=[...best.values()].map(o=>({seq:o.seq,code:o.code,price:+topVote(o.price),serial:topVote(o.serial)!=null?+topVote(o.serial):null}));
+  for(const o of buf.values()){
+    if(o.n<CONF||frameNo-o.fr>4) continue;   // only what is in recent view
+    const cur_=best.get(o.seq); if(!cur_||o.fr>cur_.fr||(o.fr===cur_.fr&&o.n>cur_.n)) best.set(o.seq,o);
+  }
+  const rows=[...best.values()].map(o=>({
+    seq:o.seq,
+    code:o.code,
+    price:topVote(o.price)!=null?+topVote(o.price):null,
+    serial:topVote(o.serial)!=null?+topVote(o.serial):null,
+    trackNo:topVote(o.trackNo)||null
+  }));
   const tk=Object.keys(totBuf).find(k=>totBuf[k].n>=CONF);
   const cap={rows,total:tk?+tk:null,lastSeq:tk&&topVote(totBuf[tk].last)!=null?+topVote(totBuf[tk].last):null};
   const S=cur(), A=activeSheet(S);
@@ -808,12 +849,12 @@ function collectLive(f){
   if(!different){
     if(!A.done){ if(fresh.length||newTotal){ saveTo(A,{...cap,rows:fresh},true); flashSaved(); } return; }
     if(fresh.length<3) return;                              // finished manifest seen again
-    ask({target:'new',why:`ใบที่ ${A.no} ครบแล้ว แต่เจอแถวที่ยังไม่มีในใบนั้น ${fresh.length} แถว`},cap); return;
+    ask({target:'new',why:`ใบที่ ${A.no} ครบแล้ว แต่ตรวจพบแถวใหม่ ${fresh.length} แถว`},cap); return;
   }
   if(rows.length<3) return;                                // not enough to decide yet
   const other=S.sheets.filter(sh=>sh!==A&&!sheetEmpty(sh)).map(sh=>({sh,...routeScore(sh,rows)})).filter(o=>o.m>=2&&o.c===0).sort((a,b)=>b.m-a.m)[0];
   if(other){ if(other.sh.done) return; ask({target:other.sh.id,why:`ตรงกับใบที่ ${other.sh.no} ${other.m} จุด`},cap); return; }
-  const why=[bySerial?`เลขที่สิ่งของไม่ตรง ${bySerial} แถว`:'',byCode?`รหัสไปรษณีย์ไม่ตรง ${byCode} แถว`:'',!clash.length&&sa.c?`เลขที่สิ่งของไม่ต่อเนื่อง ${sa.c} แถว`:''].filter(Boolean).join(' · ');
+  const why=[bySerial?`เลขสิ่งของไม่ตรง ${bySerial} แถว`:'',byCode?`รหัส ปณ. ไม่ตรง ${byCode} แถว`:'',!clash.length&&sa.c?`ลำดับไม่ต่อเนื่อง ${sa.c} แถว`:''].filter(Boolean).join(' · ');
   ask({target:'new',why:`ไม่ตรงกับใบที่ ${A.no}: ${why}`},cap);
 }
 // Repair: the user picked a manifest to fix; its missing / unreadable rows are wanted, and a clear new reading
@@ -1156,6 +1197,10 @@ function sheetHTML(S,sh){
   return `<div class="hd"><button class="back" id="sBackS">‹ ชุด</button><b style="flex:1;font-size:18px">ใบที่ ${sh.no}</b><button class="pri back" id="sToCamS" style="padding:6px 14px;font-size:13px">📷 กลับไปกล้อง</button><button id="sClose" aria-label="ปิด">✕</button></div>
     <div class="tot"><div><small>รวมค่าบริการที่สแกนได้</small><b>฿${baht(a.sum)}</b><small>${a.rows.length}${a.n?`/${a.n}`:''} แถว</small></div>
       <div><small>ยอด "รวมเงิน" ในใบ${sh.manualTotal!=null?' (พิมพ์เอง)':''}</small><input id="sTotal" inputmode="decimal" placeholder="—" value="${a.total!=null?baht(a.total):''}" aria-label="ยอดรวมเงินในใบ"><small>แก้ได้ถ้าอ่านผิด</small></div></div>
+    ${a.hasPages ? `<div class="tot" style="margin-top:8px">
+      <div><small>📄 หน้า 1 (ลำดับ 1–37)</small><b>${a.p1Rows.length} แถว · ฿${baht(a.p1Sum)}</b></div>
+      <div><small>📄 หน้า 2 (ลำดับ 38–${a.n})</small><b>${a.p2Rows.length} แถว · ฿${baht(a.p2Sum)}</b></div>
+    </div>` : ''}
     ${v}${unsureNote}${fix}
     ${a.remote.length?`<div class="sec">พื้นที่ห่างไกล / เกาะ (${a.remote.length})</div><div class="list">${a.remote.map(r=>remoteItem({...r,no:sh.no},false)).join('')}</div>`:''}
     ${a.n?`<div class="sec">ค่าบริการแต่ละลำดับ (แตะเพื่อแก้)</div><div class="grid">${grid}</div>`:''}
@@ -1270,7 +1315,28 @@ async function getWorker(){
   }
   return worker;
 }
-let busy=false, camTrack=null;
+let busy=false, camTrack=null, isStartingCam=false, activeLoopId=0;
+
+async function ensureCamRunning(){
+  if(mode !== 'cam' || isStartingCam) return;
+  if(video && video.srcObject && camTrack && camTrack.readyState === 'live'){
+    if(video.paused){
+      try{ await video.play(); return; }catch(e){}
+    } else if(video.videoWidth > 0 && !video.paused){
+      return; // camera is live and rendering frames
+    }
+  }
+  isStartingCam = true;
+  try{
+    if(camTrack){ try{ camTrack.stop(); }catch(e){} camTrack = null; }
+    await startCam();
+  }catch(err){
+    console.warn('ensureCamRunning failed:', err);
+  }finally{
+    isStartingCam = false;
+  }
+}
+
 async function startCam(){
   try{
     const stream=await navigator.mediaDevices.getUserMedia({audio:false,video:{facingMode:{ideal:'environment'},width:{ideal:1920},height:{ideal:1080}}});
@@ -1288,11 +1354,17 @@ async function startCam(){
   $('status').textContent=`กำลังโหลด AR Glass Engine… (${APP_VERSION})`;
   await getWorker();
   $('status').textContent='👓 AR Glass พร้อมสแกน · เล็งไปที่รหัส ปณ.';
-  liveLoop(0);
+  activeLoopId++;
+  liveLoop(activeLoopId);
 }
-async function liveLoop(k=0){
-  for(let i=0;mode==='cam';i++){
+async function liveLoop(loopId){
+  for(let i=0;mode==='cam' && activeLoopId===loopId;i++){
     if(busy || isFrozen){ await new Promise(r=>setTimeout(r,150)); continue; }
+    if(video.paused || !camTrack || camTrack.readyState !== 'live' || video.videoWidth === 0){
+      await ensureCamRunning();
+      await new Promise(r=>setTimeout(r,250));
+      continue;
+    }
     try{
       const f=await readFrame(FILTERS[(i*2)%FILTERS.length],currentRot(),null,0);
       if(!f) continue;
@@ -1304,6 +1376,18 @@ async function liveLoop(k=0){
     }catch(e){ await new Promise(r=>setTimeout(r,250)); }
   }
 }
+
+// Lifecycle listeners to eliminate black screen when app resumes / unminimizes
+document.addEventListener('visibilitychange', ()=>{
+  if(document.visibilityState==='visible' && mode==='cam') ensureCamRunning();
+});
+window.addEventListener('pageshow', ()=>{ if(mode==='cam') ensureCamRunning(); });
+window.addEventListener('focus', ()=>{ if(mode==='cam') ensureCamRunning(); });
+ov.addEventListener('pointerdown', ()=>{
+  if(mode==='cam' && (video.paused || !camTrack || camTrack.readyState!=='live' || video.videoWidth===0)){
+    ensureCamRunning();
+  }
+});
 // Gestures on the live view & Capture
 async function focusAt(x,y){
   const t=camTrack; if(!t) return; const caps=t.getCapabilities?.()||{};
