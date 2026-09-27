@@ -261,7 +261,7 @@ function classifyRemote(code, rowText=''){
     };
   }
 }
-const APP_VERSION='v26';   // shown in the app; every version is listed at versions.html
+const APP_VERSION='v27';   // shown in the app; every version is listed at versions.html
 const $=id=>document.getElementById(id);
 document.addEventListener('DOMContentLoaded',()=>{ const v=$('ver'); if(v) v.textContent=APP_VERSION; });
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -311,12 +311,26 @@ function sanitizeSheets(S){
   for(const sh of S.sheets){
     if(!sh.rows) continue;
     const entries = Object.entries(sh.rows).map(([seq, r]) => ({seq: +seq, r, serial: topVote(r.trk)}));
+    const p1 = entries.filter(x => x.seq <= 37);
+    const p2 = entries.filter(x => x.seq > 37);
+
+    // 1. Purge stray rows > 37:
+    // A real multi-page manifest has at least 10 rows on Page 2 and a verified grand total at the bottom.
+    // If Page 2 has only stray/isolated rows (e.g. row 47, row 38), they are 100% hallucinations and must be deleted!
+    if(p1.length >= 1 && p2.length > 0){
+      const hasRealP2 = p2.length >= 10 && topVote(sh.totals) != null;
+      if(!hasRealP2){
+        for(const item of p2){
+          delete sh.rows[item.seq];
+          changed = true;
+        }
+      }
+    }
+
+    // 2. Remap any row > 37 whose serial belongs to Page 1
     const withSerial = entries.filter(x => x.serial != null);
     if(withSerial.length >= 1){
       const minSerial = Math.min(...withSerial.map(x => x.serial));
-      // In Thailand Post manifests, Page 1 has 37 items. If minSerial is e.g. 42094902,
-      // any serial <= minSerial + 36 belongs to Page 1 (sequences 1 to 37).
-      // If a row has seq > 37 while its serial is <= minSerial + 36, it was shifted by a misread
       for(const item of entries){
         if(item.seq > 37 && item.serial != null && item.serial <= minSerial + 36){
           delete sh.rows[item.seq];
@@ -384,7 +398,9 @@ function sheetSummary(sh){
   }).sort((a,b)=>a.seq-b.seq);
   const cents=rows.reduce((t,r)=>t+(r.price!=null?Math.round(r.price*100):0),0);
   const lastSeq=topVote(sh.last)!=null?+topVote(sh.last):null;          // last row = the one just above "รวมเงิน"
-  const n=Math.max(lastSeq||0,rows.length?rows.at(-1).seq:0);
+  const p1Rows=rows.filter(r=>r.seq<=37), p2Rows=rows.filter(r=>r.seq>37);
+  const hasPages=p2Rows.length>=10||(lastSeq!=null&&lastSeq>37);
+  const n=hasPages ? Math.max(lastSeq||0,rows.length?rows.at(-1).seq:0) : 37;
   const have=new Set(rows.map(r=>r.seq)); const missing=[]; for(let i=1;i<=n;i++) if(!have.has(i)) missing.push(i);
   const total=sh.manualTotal!=null?sh.manualTotal:(topVote(sh.totals)!=null?+topVote(sh.totals):null);
   const diff=total==null?null:Math.round(total*100)-cents;
@@ -395,10 +411,8 @@ function sheetSummary(sh){
   remote.forEach(r=>r.suspect=usual!=null&&r.price!=null&&r.price<=usual);
   const noPrice=rows.filter(r=>r.price==null), unsure=rows.filter(r=>r.unsure);
   const complete=total!=null&&n>0&&!missing.length&&!noPrice.length&&diff===0;
-  const p1Rows=rows.filter(r=>r.seq<=37), p2Rows=rows.filter(r=>r.seq>37);
   const p1Sum=p1Rows.reduce((t,r)=>t+(r.price!=null?Math.round(r.price*100):0),0)/100;
   const p2Sum=p2Rows.reduce((t,r)=>t+(r.price!=null?Math.round(r.price*100):0),0)/100;
-  const hasPages=p2Rows.length>0||(n>37);
   return {rows,sum:cents/100,n,missing,total,diff,remote,noPrice,unsure,complete,p1Rows,p2Rows,p1Sum,p2Sum,hasPages};
 }
 function sessionSummary(S){
@@ -690,15 +704,19 @@ function tableRows(words){
       }
     }
   }
-  const good=rows.filter(r=>r.seq!=null&&r.seq>0&&r.seq<1000);
-  const fitOk=good.length>=1;
-
   // "รวมเงิน": a money value that is not on any row and bigger than every row price
   const onRow=new Set(rows.flatMap(r=>r.line));
-  const maxP=Math.max(0,...good.map(r=>r.price||0));
-  const lowest=Math.max(0,...good.map(r=>r.y)), pageSum=good.reduce((t,r)=>t+(r.price||0),0);
+  const maxP=Math.max(0,...rows.map(r=>r.price||0));
+  const lowest=Math.max(0,...rows.map(r=>r.y)), pageSum=rows.reduce((t,r)=>t+(r.price||0),0);
   const totals=W.filter(x=>!onRow.has(x)&&x.cy>lowest).map(x=>({x,m:asMoney(x.t)})).filter(o=>o.m!=null&&o.m>maxP&&o.m>=100&&o.m>=pageSum);
   const tot=totals.sort((a,b)=>b.m-a.m)[0];
+
+  // Thailand Post manifest: Page 1 has maximum 37 rows.
+  // Rows > 37 ONLY exist if there is a verified Page 2 (many anchors > 37 or grand total indicating page 2).
+  const isPage2 = anchors.some(a => a.readSeq > 37) && (tot != null || anchors.length >= 10);
+  const maxAllowedSeq = isPage2 ? 74 : 37;
+  const good=rows.filter(r=>r.seq!=null&&r.seq>0&&r.seq<=maxAllowedSeq);
+  const fitOk=good.length>=1;
   // the last row of the manifest is the one right above the total
   const lastSeq=tot?good.filter(r=>r.y<tot.x.cy).reduce((m,r)=>Math.max(m,r.seq),0)||null:null;
   return {rows:good,total:tot?.m??null,lastSeq,fitOk};
@@ -1172,38 +1190,40 @@ const ROT_MODES=[
 ];
 let rotModeIndex=0;
 const rotOrder=()=>innerWidth>innerHeight?[270,90,0]:[0,90,270];
-const rotState={ROTS:rotOrder(),ri:0,empty:0,manual:null};
-const currentRot=()=>rotState.manual!=null ? rotState.manual : rotState.ROTS[rotState.ri];
+const rotState={ROTS:rotOrder(),ri:0,empty:0,manual:null,lockRot:null};
+const currentRot=()=>rotState.manual!=null ? rotState.manual : (rotState.lockRot!=null ? rotState.lockRot : rotState.ROTS[rotState.ri]);
 function cycleRot(){
   rotModeIndex=(rotModeIndex+1)%ROT_MODES.length;
   const m=ROT_MODES[rotModeIndex];
   rotState.manual=m.v;
+  rotState.lockRot=m.v;
   const b=$('rotBtn'); if(b){ b.textContent=m.label; b.classList.toggle('on',m.v!=null); }
   toast(`โหมดหมุนภาพ: ${m.label} (${m.desc})`);
 }
 const rotBtn=$('rotBtn'); if(rotBtn) rotBtn.onclick=cycleRot;
-addEventListener('resize',()=>{ const o=rotOrder(); if(o[0]!==rotState.ROTS[0]){ rotState.ROTS=o; rotState.ri=0; rotState.empty=0; } });
+addEventListener('resize',()=>{ const o=rotOrder(); if(o[0]!==rotState.ROTS[0]){ rotState.ROTS=o; rotState.ri=0; rotState.empty=0; rotState.lockRot=null; } });
 
 async function readCapture(src){
-  // 1st pass: fast 1280px with default/known orientation
-  let rot=currentRot();
-  let f=await readFrame(FILTERS[0],rot,src,0);
-  if(rotState.manual==null && (!f || f.pcs<15)){
-    for(const r of [90,270,0,180]){
-      if(r===rot) continue;
-      const g=await readFrame(FILTERS[0],r,src,0);
-      if(g && (!f || g.pcs>f.pcs)){ f=g; rot=r; }
-      if(f && f.pcs>=25) break;
+  // 1st pass: fast with default/known orientation
+  let rot = rotState.lockRot ?? currentRot();
+  let f = await readFrame(FILTERS[0], rot, src, 0);
+  if(rotState.manual == null && rotState.lockRot == null && (!f || f.pcs < 15)){
+    for(const r of [270, 90, 0, 180]){
+      if(r === rot) continue;
+      const g = await readFrame(FILTERS[0], r, src, 0);
+      if(g && (!f || g.pcs > f.pcs)){ f = g; rot = r; }
+      if(f && f.pcs >= 25) break;
     }
   }
+  if(f && f.pcs >= 15) rotState.lockRot = rot;
   showScanLoading(65, '⏳ กำลังอ่านตารางทั้งใบ...', `อ่านได้แล้ว ${f?.tr?.rows?.length||0} แถว (${f?.pcs||0} รหัส ปณ.)`);
-  let frames=[f];
-  // Parallel 2nd pass ONLY if 1st pass had poor fit or few rows
-  if(f && (f.tr.rows.length<8 || !f.tr.fitOk)){
-    const f2=await readFrame(FILTERS[1],rot,src,1%workers.length);
+  let frames = [f];
+  // 2nd pass: if rows are missing (< 35 rows on 37-row page), run high contrast filter to fill faint prices!
+  if(f && (f.tr.rows.length < 35 || !f.tr.fitOk)){
+    const f2 = await readFrame(FILTERS[1], rot, src, 1 % workers.length);
     if(f2) frames.push(f2);
   }
-  return {frames,cap:consolidate(frames)};
+  return {frames, cap: consolidate(frames)};
 }
 let lastSkipMsg=0, live=[], liveT=0, camFrame=0, frameMs=0;
 function beat(){ const b=$('beat'); if(!b) return; b.classList.remove('on'); void b.offsetWidth; b.classList.add('on'); }
@@ -1610,8 +1630,14 @@ async function liveLoop(loopId){
       if(!f) continue;
       collectLive(f); showBoxes(f);
       if(rotState.manual==null){
-        const maxEmpty = (innerHeight > innerWidth) ? 1 : 2;
-        if(f.pcs>=1){ rotState.empty=0; } else if(++rotState.empty >= maxEmpty){ rotState.empty=0; rotState.ri=(rotState.ri+1)%rotState.ROTS.length; }
+        if(f.pcs>=2){
+          rotState.empty=0;
+          rotState.lockRot=currentRot();
+        } else if(++rotState.empty >= 8){
+          rotState.empty=0;
+          rotState.lockRot=null;
+          rotState.ri=(rotState.ri+1)%rotState.ROTS.length;
+        }
       }
     }catch(e){ await new Promise(r=>setTimeout(r,250)); }
   }
