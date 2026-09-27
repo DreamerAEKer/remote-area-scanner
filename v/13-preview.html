@@ -22,22 +22,7 @@ button{font:inherit;color:inherit;background:rgba(0,0,0,.55);border:1px solid rg
 button.on{border-color:var(--amber);color:var(--amber)}
 #rotBtn{font-size:13px;padding:6px 12px;font-variant-numeric:tabular-nums}
 #rotBtn.on{border-color:var(--amber);color:var(--amber);background:rgba(255,176,32,.18);font-weight:700}
-#remoteAlert{position:fixed;top:calc(env(safe-area-inset-top,0px) + 54px);left:10px;right:10px;max-width:540px;margin:0 auto;padding:12px 14px;border-radius:16px;background:rgba(20,16,8,0.92);border:2px solid var(--amber);box-shadow:0 8px 32px rgba(255,176,32,0.35),0 0 14px rgba(0,0,0,0.85);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);z-index:110;display:grid;gap:10px;animation:raIn .25s ease-out}
-@keyframes raIn{from{transform:translateY(-10px);opacity:0}to{transform:translateY(0);opacity:1}}
-.ra-hd{display:flex;align-items:center;justify-content:space-between;gap:8px}
-.ra-title{font-size:15px;font-weight:700;color:var(--amber);display:flex;align-items:center;gap:6px}
-.ra-cnt{font-size:12px;font-weight:700;padding:2px 8px;border-radius:99px;background:var(--amber);color:#000}
-.ra-body{display:grid;gap:6px;max-height:160px;overflow-y:auto}
-.ra-item{display:flex;align-items:center;gap:10px;padding:8px 10px;background:rgba(255,255,255,0.06);border-radius:10px;font-size:13px}
-.ra-badge{font-size:15px;font-weight:700;color:#ffe2a8;font-variant-numeric:tabular-nums;background:rgba(255,176,32,0.22);padding:2px 6px;border-radius:6px;border:1px solid rgba(255,176,32,0.5)}
-.ra-desc{flex:1;min-width:0;line-height:1.3}
-.ra-seq{color:var(--green);font-weight:700;margin-right:4px}
-.ra-area{display:block;color:var(--amber);font-size:11px}
-.ra-actions{display:flex;gap:8px;margin-top:4px}
-.ra-act{flex:1;padding:8px 10px;font-size:13px;font-weight:700;border-radius:10px;cursor:pointer}
-.ra-act.snap{background:var(--amber);color:#000;border:1px solid var(--amber)}
-.ra-act.hist{background:rgba(255,255,255,0.12);color:#fff;border:1px solid rgba(255,255,255,0.25)}
-.ra-act.clear{flex:0 0 auto;background:rgba(255,255,255,0.08);color:var(--muted);border:1px solid rgba(255,255,255,0.18)}
+
 #scanLoading{position:fixed;inset:0;background:rgba(0,0,0,0.85);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);display:flex;align-items:center;justify-content:center;z-index:999}
 .sl-box{background:#11161b;border:1.5px solid rgba(255,176,32,0.4);border-radius:18px;padding:26px 20px;text-align:center;max-width:320px;width:88%;box-shadow:0 12px 40px rgba(0,0,0,0.8)}
 .sl-spin{width:46px;height:46px;border:3.5px solid rgba(255,176,32,0.2);border-top-color:var(--amber);border-radius:50%;animation:slSpin .8s linear infinite;margin:0 auto 16px}
@@ -170,18 +155,7 @@ input{-webkit-user-select:text;user-select:text}
   <button id="cam" hidden aria-label="กลับไปใช้กล้อง">📷</button>
   <button id="pick" aria-label="เลือกรูป">🖼</button>
 </div>
-<div id="remoteAlert" hidden>
-  <div class="ra-hd">
-    <span class="ra-title">🚨 ตรวจพบพื้นที่ห่างไกล / เกาะ</span>
-    <span class="ra-cnt" id="raCount">0 จุด</span>
-  </div>
-  <div class="ra-body" id="raList"></div>
-  <div class="ra-actions">
-    <button id="raSnapBtn" class="ra-act snap">📸 สแกนตรวจทั้งใบ</button>
-    <button id="raHistBtn" class="ra-act hist">📋 ดูประวัติ</button>
-    <button id="raClearBtn" class="ra-act clear">✕ ปิด</button>
-  </div>
-</div>
+
 <div id="scanLoading" hidden>
   <div class="sl-box">
     <div class="sl-spin"></div>
@@ -286,7 +260,7 @@ function classifyRemote(code, rowText=''){
     };
   }
 }
-const APP_VERSION='v20';   // shown in the app; every version is listed at versions.html
+const APP_VERSION='v21';   // shown in the app; every version is listed at versions.html
 const $=id=>document.getElementById(id);
 document.addEventListener('DOMContentLoaded',()=>{ const v=$('ver'); if(v) v.textContent=APP_VERSION; });
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -632,60 +606,7 @@ function clearDetections(){
   dets=[];
   seen.clear();
   live=[];
-  if($('remoteAlert')) $('remoteAlert').hidden=true;
   toast('ล้างจอแล้ว พร้อมสแกนใหม่');
-}
-
-function updateRemoteAlert(){
-  const ra=$('remoteAlert');
-  if(!ra) return;
-  const remoteDets=dets.filter(d=>d.isRemote && d.confirmed);
-  if(!remoteDets.length){
-    ra.hidden=true;
-    return;
-  }
-  ra.hidden=false;
-  const cntEl=$('raCount');
-  if(cntEl) cntEl.textContent=`${remoteDets.length} จุด`;
-  const listEl=$('raList');
-  if(listEl){
-    listEl.innerHTML=remoteDets.map(d=>{
-      const cr=classifyRemote(d.code, d.rowText||'');
-      if(!cr) return '';
-      const seqStr=d.row!=null?`<span class="ra-seq">ลำดับ <b>${d.row}</b></span>`:'<span class="ra-seq" style="color:var(--muted)">ไม่ระบุลำดับ</span>';
-      const trkStr=d.trackNo?`<span style="color:#5fe3ff;font-family:monospace;font-size:11px;margin-left:4px">${esc(d.trackNo)}</span>`:'';
-      let feeStr='';
-      if(d.price!=null){
-        const isSur = d.price>=50 || d.isSurcharged;
-        feeStr = `<div style="margin-top:2px;font-size:12px;font-weight:600;color:${isSur?'var(--green)':'var(--red)'}">
-          ฿${baht(d.price)} ${isSur ? '✓ รวม +20 บาทแล้ว' : '⚠ ราคาปกติ ยังไม่บวก +20'}
-        </div>`;
-      }
-      return `<div class="ra-item">
-        <span class="ra-badge">${d.code}</span>
-        <div class="ra-desc">
-          <div>${seqStr}${trkStr} <b>${esc(cr.office)}</b> (${esc(cr.prov)})</div>
-          <small class="ra-area">${cr.label}</small>
-          ${feeStr}
-        </div>
-      </div>`;
-    }).join('');
-  }
-
-  // Auto-save confirmed remote areas to session history immediately
-  const S=cur();
-  let changed=false;
-  for(const d of remoteDets){
-    if(!d.savedToHist){
-      d.savedToHist=true;
-      inc(S.loose, d.code);
-      changed=true;
-    }
-  }
-  if(changed){
-    persist();
-    refreshUI();
-  }
 }
 
 // Boxes & Holograms — Google Glass AR ONLY alerts & displays Remote Area postcodes with high confidence
@@ -696,14 +617,6 @@ function showBoxes(f,capRows){
   // Calculate base price of normal rows (usually 35.00 baht for EMS/eCo Post)
   const normalPrices=f.tr.rows.filter(r=>!BY_CODE[r.code]&&r.price!=null).map(r=>r.price);
   const basePrice=normalPrices.length?median(normalPrices):35.0;
-
-  // Active target row in the center of camera view
-  if(f.tr.rows.length){
-    const [sw, sh]=srcSize();
-    const cySrc=sh ? (sh/2) : 500;
-    const centerRow=f.tr.rows.slice().sort((a,b)=>Math.abs(a.y - cySrc) - Math.abs(b.y - cySrc))[0];
-    activeInspect={centerRow, count:f.tr.rows.length, pcs:f.pcs, basePrice, t:now};
-  }
 
   for(const w of f.words){
     const code=asPostcode(w.text); if(!code) continue;
@@ -732,31 +645,32 @@ function showBoxes(f,capRows){
       // High certainty: Confirm when has +20 surcharge, or seen across >= 2 frames, or high word confidence
       if(!prev.confirmed && (isSurcharged || prev.seenCount>=2 || conf>=75)){
         prev.confirmed=true;
-        if(!seen.has(code)){ seen.add(code); freshRemote=true; }
+        if(!seen.has(code)){
+          seen.add(code); freshRemote=true;
+          inc(cur().loose, code); persist(); refreshUI();
+        }
       }
     }
     else {
       // First sighting: if has +20 surcharge or extreme confidence >= 80, confirm right away!
       const confirmed = (isSurcharged || conf>=80);
-      dets.push({code,isRemote:true,b:{...b},target:b,t:now,row,rowText,trackNo:r?.trackNo||null,price:rFee,isSurcharged,firstSeen:now,seenCount:1,confirmed,locked:true});
+      dets.push({code,isRemote:true,b:{...b},target:b,t:now,row,rowText,trackNo:r?.trackNo||null,price:rFee,isSurcharged,firstSeen:now,seenCount:1,confirmed});
       if(confirmed && !seen.has(code)){
         seen.add(code); freshRemote=true;
+        inc(cur().loose, code); persist(); refreshUI();
       }
     }
   }
   camFrame++; for(const d of dets) if(d.t===now) d.f=camFrame;
 
-  // Keep confirmed remote detections permanently until user clears
-  // Unconfirmed single-frame noise dropped after 2 seconds
-  dets=dets.filter(d=>mode!=='cam' || (d.confirmed && d.locked) || (now-d.t<2000));
+  // True AR: Keep detections ONLY while visible in current camera view (decay after 500ms)
+  // When camera moves away from the document, AR badges immediately vanish! No ghost badges on the floor!
+  dets=dets.filter(d=>mode!=='cam' || (now-d.t<600));
   const confirmedRemotes=dets.filter(d=>d.confirmed);
 
   if(freshRemote || (confirmedRemotes.length && now-lastBeep>4000)){
     if(confirmedRemotes.length){ glassChime('remote'); lastBeep=now; }
   }
-
-  // Update persistent Remote Area HUD alert (only for confirmed remote areas!)
-  updateRemoteAlert();
 
   // Repair mode tracking only
   if(mode==='cam'&&!capRows){
@@ -783,26 +697,26 @@ function showBoxes(f,capRows){
   } else if(asking){
     st.textContent = 'รอคุณยืนยันใบ ↓';
   } else if(n > 0){
-    // Top status chip: keep focused on live camera telemetry to avoid duplicate alert with floating card
-    if(f.tr.rows.length > 0){
-      const seqs=f.tr.rows.map(r=>r.seq);
-      const lo=Math.min(...seqs), hi=Math.max(...seqs);
-      st.textContent = `🟢 สแกนสด: กำลังเห็น ${f.tr.rows.length} แถว (ลำดับ ${lo}–${hi})`;
-    } else {
-      st.textContent = `🟢 สแกนสด: กำลังตรวจตาราง (${f.pcs} รหัส ปณ.)`;
-    }
-    st.className = 'chip on';
+    const rHead = confirmedRemotes[0];
+    const cr = classifyRemote(rHead.code, rHead.rowText||'');
+    const seqStr = rHead.row != null ? `ลำดับ ${rHead.row} · ` : '';
+    const feeStr = rHead.price != null ? ` ฿${baht(rHead.price)}${rHead.price>=50?' (+20✓)':''}` : '';
+    st.textContent = `🚨 พบพื้นที่ห่างไกล: ${seqStr}ปณ. ${rHead.code} (${cr?cr.office:''})${feeStr}`;
+    st.className = 'chip hit';
   } else if(need && need.size){
     st.textContent = `📌 ต้องการ: ส่องซ่อมลำดับ ${[...need].slice(0, 4).join(', ')} ที่ยังขาด`;
+    st.className = 'chip';
   } else if(f.tr.rows.length > 0){
     const seqs=f.tr.rows.map(r=>r.seq);
     const lo=Math.min(...seqs), hi=Math.max(...seqs);
-    const cSeq=activeInspect?.centerRow?.seq;
-    st.textContent = `🟢 สแกนอยู่: ลำดับ ${lo}–${hi} (${f.tr.rows.length} แถว) · เล็งแถว ${cSeq||lo}`;
+    st.textContent = `🟢 สแกนสด: กำลังเห็น ${f.tr.rows.length} แถว (ปณ. ปกติ · ลำดับ ${lo}–${hi})`;
+    st.className = 'chip on';
   } else if(f.pcs > 0){
-    st.textContent = `🟢 สแกนอยู่: ล็อกรหัสได้ ${f.pcs} จุด · กำลังตรวจตาราง`;
+    st.textContent = `🟢 สแกนสด: ตรวจพบ ${f.pcs} รหัส ปณ. ปกติ`;
+    st.className = 'chip on';
   } else {
     st.textContent = `⚡ กล้องสดพร้อม (${Math.round(frameMs||180)}ms) · ส่องไปที่ใบนำส่ง`;
+    st.className = 'chip';
   }
   st.className='chip' + (n ? ' hit' : (f.tr.rows.length > 0 || f.pcs > 0) ? ' on' : '');
 }
@@ -1127,48 +1041,6 @@ function draw(ts){
     ctx.beginPath(); ctx.moveTo(cx-rw/2, scanY); ctx.lineTo(cx+rw/2, scanY); ctx.stroke();
     ctx.restore();
 
-    // Live Target Inspector HUD (บอกสดว่ากำลังสแกนแถวไหน รหัสอะไร ค่าบริการเท่าไร)
-    if(activeInspect && now - activeInspect.t < 1500 && activeInspect.centerRow){
-      const crw = activeInspect.centerRow;
-      const isRem = !!BY_CODE[crw.code];
-      const cr = isRem ? classifyRemote(crw.code, crw.rowText) : null;
-      const bp = activeInspect.basePrice || 35.0;
-      const isSurcharged = crw.price != null && (crw.price >= bp + 15 || crw.price >= 50);
-      
-      const tSeq = crw.seq != null ? `ลำดับ ${crw.seq} · ` : '';
-      const tCode = `ปณ. ${crw.code}` + (cr ? ` (${cr.office})` : '');
-      const tLine1 = tSeq + tCode;
-      
-      const tPrice = crw.price != null ? `฿${baht(crw.price)}` : 'กำลังอ่านราคา';
-      let tStatus = '✓ ปกติ';
-      if(isRem){
-        if(isSurcharged) tStatus = '🔥 ห่างไกล 100% (+20 บาท ✓)';
-        else tStatus = '⚠️ ห่างไกล (ตรวจราคา +20)';
-      }
-      const tLine2 = `${tPrice} · ${tStatus}`;
-
-      ctx.font = '700 13px "IBM Plex Sans Thai",sans-serif';
-      let hw = Math.max(220, ctx.measureText(tLine1).width, ctx.measureText(tLine2).width) + 26;
-      const hh = 44;
-      let hx = cx - hw/2, hy = cy + rh/2 + 10;
-      if(hy + hh > H - 110) hy = cy - rh/2 - hh - 10;
-
-      ctx.save();
-      ctx.fillStyle = isRem ? 'rgba(30, 18, 5, 0.92)' : 'rgba(12, 18, 26, 0.88)';
-      ctx.strokeStyle = isRem ? '#ffb020' : 'rgba(95, 227, 255, 0.75)';
-      ctx.lineWidth = 1.5;
-      rr(hx, hy, hw, hh, 8);
-      ctx.fill(); ctx.stroke();
-
-      ctx.fillStyle = isRem ? '#ffb020' : '#5fe3ff';
-      ctx.font = '700 13px "IBM Plex Sans Thai",sans-serif';
-      ctx.fillText(tLine1, hx + 12, hy + 18);
-
-      ctx.fillStyle = isRem ? (isSurcharged ? '#4ade80' : '#ffb020') : '#b9c6cf';
-      ctx.font = '500 11px "IBM Plex Sans Thai",sans-serif';
-      ctx.fillText(tLine2, hx + 12, hy + 35);
-      ctx.restore();
-    }
   }
 
   // Row markers when scanning manifest (ONLY show if repair mode is active for missing rows)
@@ -1181,45 +1053,51 @@ function draw(ts){
     }
   }
 
-  // AR Holograms ONLY for Confirmed Remote Postcodes
+  // True AR: Highlight ONLY Confirmed Remote Postcodes currently in camera view
   for(const d of dets){
     if(!d.isRemote || !d.confirmed || !agrees(d)) continue;
     for(const k of ['x0','y0','x1','y1']) d.b[k]+=(d.target[k]-d.b[k])*.4;
-    const r=toScreen(d.b), p=6; r.x-=p; r.y-=p; r.w+=p*2; r.h+=p*2;
-    ctx.globalAlpha=1;
+    const r=toScreen(d.b), p=4; r.x-=p; r.y-=p; r.w+=p*2; r.h+=p*2;
 
-    // --- Hologram: Remote Area (Neon Amber / Gold Glow) ---
-    drawBrackets(r.x, r.y, r.w, r.h, 12, '#ffb020', 2.5, true);
-    ctx.fillStyle='rgba(255,176,32,.18)'; rr(r.x,r.y,r.w,r.h,4); ctx.fill();
-
-    const cr=classifyRemote(d.code, d.rowText||'');
-    const list=BY_CODE[d.code], e=list[0];
-    const t1=(d.row!=null?`${S.sheets.length>1&&d.no?`ใบ ${d.no} · `:''}ลำดับ ${d.row} · `:'')+`${d.code} · ${e.office}`;
-    const t2=cr ? `${cr.shortLabel} จ.${cr.prov}` : `${e.prov} [พื้นที่ห่างไกล]`;
-
-    ctx.font='700 13px "IBM Plex Sans Thai",sans-serif';
-    let lw=ctx.measureText(t1).width;
-    ctx.font='500 11px "IBM Plex Sans Thai",sans-serif';
-    lw=Math.max(lw, ctx.measureText(t2).width) + 20;
-    const lh=40;
-
-    // Hologram Leader Line
-    const startX=r.x+r.w, startY=r.y+r.h/2;
-    let targetX=startX+22, targetY=startY-22;
-    if(targetX+lw > W-8) targetX=r.x-lw-14;
-    if(targetY < 50) targetY=r.y+r.h+8;
+    // Smooth fade out when detection ages (disappears immediately if camera pans away)
+    const age = now - d.t;
+    const alpha = age < 250 ? 1 : Math.max(0, 1 - (age - 250)/300);
+    if(alpha <= 0.05) continue;
 
     ctx.save();
-    ctx.strokeStyle='rgba(255,176,32,.75)'; ctx.lineWidth=1.5; ctx.setLineDash([3,2]);
-    ctx.beginPath(); ctx.moveTo(startX, startY); ctx.lineTo(targetX>startX?targetX:targetX+lw, targetY+lh/2); ctx.stroke();
-    ctx.restore();
+    ctx.globalAlpha = alpha;
 
-    // Floating Frosted Glass Badge
-    ctx.fillStyle='rgba(15,20,26,.88)'; ctx.strokeStyle='#ffb020'; ctx.lineWidth=1.5;
-    rr(targetX, targetY, lw, lh, 8); ctx.fill(); ctx.stroke();
-    ctx.fillStyle='#ffb020'; ctx.font='700 13px "IBM Plex Sans Thai",sans-serif'; ctx.fillText(t1, targetX+10, targetY+16);
-    ctx.fillStyle='#ffe2a8'; ctx.font='500 11px "IBM Plex Sans Thai",sans-serif'; ctx.fillText(t2, targetX+10, targetY+32);
-    ctx.globalAlpha=1;
+    // 1. Neon Amber AR Bracket tightly around the postcode text
+    drawBrackets(r.x, r.y, r.w, r.h, 8, '#ffb020', 2, true);
+    ctx.fillStyle = 'rgba(255,176,32,0.18)';
+    rr(r.x, r.y, r.w, r.h, 3);
+    ctx.fill();
+
+    // 2. Compact AR pill tag anchored directly above/next to the postcode
+    const cr = classifyRemote(d.code, d.rowText||'');
+    const seqStr = d.row != null ? `ลำดับ ${d.row} · ` : '';
+    const officeStr = cr ? `${cr.office} (${cr.shortLabel})` : 'พื้นที่ห่างไกล';
+    const feeStr = d.price != null ? ` ฿${baht(d.price)}${d.price>=50?' (+20✓)':''}` : '';
+    const badgeText = `🚨 ${seqStr}${d.code} · ${officeStr}${feeStr}`;
+
+    ctx.font = '700 12px "IBM Plex Sans Thai",sans-serif';
+    const bw = ctx.measureText(badgeText).width + 16;
+    const bh = 22;
+    const bx = Math.max(8, Math.min(W - bw - 8, r.x));
+    const by = (r.y - bh - 4 >= 48) ? (r.y - bh - 4) : (r.y + r.h + 4);
+
+    ctx.fillStyle = 'rgba(15, 20, 26, 0.92)';
+    ctx.strokeStyle = '#ffb020';
+    ctx.lineWidth = 1.5;
+    ctx.shadowColor = '#ffb020';
+    ctx.shadowBlur = 8;
+    rr(bx, by, bw, bh, 6);
+    ctx.fill(); ctx.stroke();
+
+    ctx.shadowBlur = 0;
+    ctx.fillStyle = '#ffb020';
+    ctx.fillText(badgeText, bx + 8, by + 15);
+    ctx.restore();
   }
   requestAnimationFrame(draw);
 }
@@ -1523,9 +1401,6 @@ $('file').onchange=async()=>{
   $('sessBtn').click();   // show the session result after reading the photos
 };
 $('cam').onclick=()=>location.reload();
-const raSnap=$('raSnapBtn'); if(raSnap) raSnap.onclick=()=>doCaptureStill();
-const raHist=$('raHistBtn'); if(raHist) raHist.onclick=()=>$('sessBtn').click();
-const raClr=$('raClearBtn'); if(raClr) raClr.onclick=clearDetections;
 
 refreshUI();
 requestAnimationFrame(draw);
