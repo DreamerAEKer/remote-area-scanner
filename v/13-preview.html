@@ -261,14 +261,14 @@ function classifyRemote(code, rowText=''){
     };
   }
 }
-const APP_VERSION='v23';   // shown in the app; every version is listed at versions.html
+const APP_VERSION='v24';   // shown in the app; every version is listed at versions.html
 const $=id=>document.getElementById(id);
 document.addEventListener('DOMContentLoaded',()=>{ const v=$('ver'); if(v) v.textContent=APP_VERSION; });
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const baht=n=>n==null||isNaN(n)?'—':Number(n).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
 const video=$('video'), still=$('still'), ov=$('ov'), ctx=ov.getContext('2d');
 const grab=document.createElement('canvas'), gctx=grab.getContext('2d',{willReadFrequently:true});
-let mode='cam', worker=null, dets=[], seen=new Set(), lastBeep=0, activeInspect=null;
+let mode='cam', worker=null, dets=[], liveFeeTags=[], seen=new Set(), lastBeep=0, activeInspect=null;
 
 /* ================= Sessions → manifests (ใบนำส่ง) — kept on this phone ================= */
 // session  = {id, name, created, updated, sheets:[sheet], active:sheetId, loose:{code:n}}
@@ -507,7 +507,7 @@ function tableRows(words){
 
   // postcodes of the destination column only (drops the sender address, footer, etc.)
   let pcs=W.filter(x=>(x.pc=asPostcode(x.t)));
-  if(pcs.length>=3){ const mx=median(pcs.map(x=>x.b.x0)); pcs=pcs.filter(x=>Math.abs(x.b.x0-mx)<3*x.h); }
+  if(pcs.length>=3){ const mx=median(pcs.map(x=>x.b.x0)); pcs=pcs.filter(x=>Math.abs(x.b.x0-mx)<Math.max(140, 12*x.h)); }
   const rows=pcs.map(p=>{
     const left=walk(p,-1), right=walk(p,1);
     const rowBandH = Math.max(14, p.h * 1.0);
@@ -526,13 +526,15 @@ function tableRows(words){
     const money = allRight.map(x => asMoney(x.t)).filter(m => m != null && m < 10000);
     const satangM = money.filter(m => okSatang(m));
     const price = satangM.length ? satangM.at(-1) : (money.length ? money.at(-1) : null);
+    const priceItem = allRight.slice().reverse().find(x => asMoney(x.t) === price);
+    const priceWord = priceItem ? (priceItem.w || priceItem) : null;
 
     const serial = allRight.map(x => asSerial(x.t)).find(v => v != null) ?? null;
     const rightStr = allRight.map(x => x.t.replace(/[^A-Za-z0-9]/g,'')).join('');
     const trkMatch = rightStr.match(/[A-Za-z]{2}\d{9}[A-Za-z]{2}/);
     const trackNo = trkMatch ? trkMatch[0].toUpperCase() : null;
     const rowText = [...rowLeft.slice().reverse(), p, ...rowRight].map(x => x.t).join(' ');
-    return {p,y:p.cy,readSeq,code:p.pc,codeWord:p.w,price,serial,trackNo,line:[p,...left,...right],rowText};
+    return {p,y:p.cy,readSeq,code:p.pc,codeWord:p.w,price,priceWord,serial,trackNo,line:[p,...left,...right],rowText};
   });
 
   // fit y ≈ a + pitch·seq from the rows whose number was read, keep the consistent ones
@@ -561,7 +563,7 @@ function tableRows(words){
     }
   }
   const good=rows.filter(r=>r.seq!=null&&r.seq>0&&r.seq<1000);
-  const fitOk=good.length>=3;
+  const fitOk=good.length>=1;
 
   // "รวมเงิน": a money value that is not on any row and bigger than every row price
   const onRow=new Set(rows.flatMap(r=>r.line));
@@ -603,8 +605,8 @@ const FILTERS=['grayscale(1) contrast(1.35)','grayscale(1) contrast(2)','none'];
 const canv=[];
 async function readFrame(filter,rot,src,k=0){
   const el=src?.el??(mode==='cam'?video:still), [sw,sh]=src?[src.w,src.h]:srcSize(); if(!sw) return null;
-  // 1080px for live camera (sharp digits for fee & seq columns ~250ms), 1800px for still capture (super sharp)
-  const maxDim = (mode==='cam'&&!src) ? 1080 : 1800;
+  // 850px for live camera (ultra-fast AR speed ~250ms), 1800px for still capture (super sharp)
+  const maxDim = (mode==='cam'&&!src) ? 850 : 1800;
   const s = (mode==='cam'&&!src) ? Math.min(1, maxDim/Math.max(sw,sh)) : Math.min(2.5, maxDim/Math.max(sw,sh));
   const cv=k?(canv[k] ||= document.createElement('canvas')):grab;
   const toSrc=drawRotated(el,sw,sh,s,rot,filter,cv);
@@ -636,12 +638,13 @@ function hideScanLoading(){
 
 function clearDetections(){
   dets=[];
+  liveFeeTags=[];
   seen.clear();
   live=[];
   toast('ล้างจอแล้ว พร้อมสแกนใหม่');
 }
 
-// Boxes & Holograms — Google Glass AR ONLY alerts & displays Remote Area postcodes with high confidence
+// Boxes & Holograms — Google Glass AR: High-priority Amber for Remote, Clean Green Fee Tags for Normal Rows
 function showBoxes(f,capRows){
   const now=performance.now(); let freshRemote=false;
   const rowOf=new Map(f.tr.rows.filter(r=>r.codeWord).map(r=>[r.codeWord,r]));
@@ -650,10 +653,32 @@ function showBoxes(f,capRows){
   const normalPrices=f.tr.rows.filter(r=>!BY_CODE[r.code]&&r.price!=null).map(r=>r.price);
   const basePrice=normalPrices.length?median(normalPrices):35.0;
 
+  // 1. Update liveFeeTags for Normal Rows (Calm AR green tags on paper with collected fee)
+  for(const r of f.tr.rows){
+    if(r.price == null) continue;
+    const isRemote = !!BY_CODE[r.code];
+    if(isRemote) continue; // Remote rows are handled with prominent amber badges in dets!
+
+    const rawBox = r.priceWord ? (r.priceWord.bbox || r.priceWord.b) : (r.p?.w?.bbox || r.p?.b);
+    if(!rawBox) continue;
+    const b = f.toSrc(rawBox);
+    const tagId = r.seq ? 's_' + r.seq : 'c_' + r.code;
+    const prev = liveFeeTags.find(t => t.id === tagId || Math.hypot((t.b.x0+t.b.x1)/2 - (b.x0+b.x1)/2, (t.b.y0+t.b.y1)/2 - (b.y0+b.y1)/2) < 60);
+    if(prev){
+      prev.target = b; prev.t = now;
+      if(r.seq != null) prev.seq = r.seq;
+      if(r.price != null) prev.price = r.price;
+      prev.code = r.code;
+    } else {
+      liveFeeTags.push({ id: tagId, seq: r.seq, code: r.code, price: r.price, b: {...b}, target: b, t: now });
+    }
+  }
+  liveFeeTags = liveFeeTags.filter(t => mode !== 'cam' || (now - t.t < 550));
+
+  // 2. High-priority Remote Area Postcode detections (Amber AR badges)
   for(const w of f.words){
     const code=asPostcode(w.text); if(!code) continue;
     const isRemote=!!BY_CODE[code];
-    // USER EXPLICIT: Only alert and display AR for Remote Area postcodes! Normal postcodes do NOT clutter screen
     if(!isRemote) continue;
 
     const b=f.toSrc(w.bbox), r=rowOf.get(w), row=r?.seq??null;
@@ -777,18 +802,27 @@ function checkCapture(cap){
 }
 function saveTo(sh,cap,quiet){
   const S=cur(), need=repairNeed(sh);
+  let newRowsCount=0;
   for(const r of cap.rows){
     const row=(sh.rows[r.seq] ||= {price:{},code:{},trk:{}}); row.trk ||= {};
+    const hadPrice = topVote(row.price) != null;
     if(need&&need.has(r.seq)&&r.price!=null&&okSatang(r.price)) row.price={};   // repair: a clear new charge replaces the unclear one
     if(r.price!=null) inc(row.price,r.price.toFixed(2),okSatang(r.price)?1:0.3);
     inc(row.code,r.code);
     if(r.serial!=null) inc(row.trk,r.serial);
     if(r.trackNo){ row.trackNo ||= {}; inc(row.trackNo,r.trackNo); }
+    if(!hadPrice && topVote(row.price) != null) newRowsCount++;
   }
   if(cap.total!=null){ inc(sh.totals,cap.total.toFixed(2)); if(cap.lastSeq) inc(sh.last,cap.lastSeq); }
   S.active=sh.id; S.updated=Date.now(); persist();
   const was=sh.done; checkDone(sh); refreshUI();
-  if(!was&&!sh.done&&cap.rows.length) toast(quiet?`+${cap.rows.length} แถว → ใบนำส่ง`:`บันทึกเรียบร้อย (+${cap.rows.length} แถว)`,quiet);
+  if(!was&&!sh.done&&cap.rows.length){
+    if(newRowsCount > 0){
+      glassChime('normal');
+      try{ navigator.vibrate?.(12); }catch(e){}
+    }
+    toast(quiet?`+${cap.rows.length} แถว → ใบนำส่ง`:`บันทึกเรียบร้อย (+${cap.rows.length} แถว)`,quiet);
+  }
   endRepairIfDone(sh);
 }
 // is this row already saved in the manifest with the same code and charge?
@@ -822,8 +856,21 @@ function collectLive(f){
   if(f.tr.total!=null&&okSatang(f.tr.total)){ const k=f.tr.total.toFixed(2), o=totBuf[k]||{n:0,last:{}}; o.n++; if(f.tr.lastSeq) inc(o.last,f.tr.lastSeq); o.t=now; totBuf[k]=o; }
   for(const [k,o] of buf) if(now-o.t>20000) buf.delete(k);
   for(const k in totBuf) if(now-totBuf[k].t>20000) delete totBuf[k];
-  // confirmed rows: seen in at least CONF frames
+  // Fast-path: immediately save clean rows with prices on frame 1 + confirmed rows
   const best=new Map();
+  for(const r of f.tr.rows){
+    if(r.seq!=null && r.price!=null && okSatang(r.price)){
+      best.set(r.seq, {
+        seq: r.seq,
+        code: r.code,
+        price: {[r.price.toFixed(2)]: 1},
+        serial: r.serial!=null ? {[r.serial]: 1} : {},
+        trackNo: r.trackNo ? {[r.trackNo]: 1} : {},
+        n: 1,
+        fr: frameNo
+      });
+    }
+  }
   for(const o of buf.values()){
     if(o.n<CONF||frameNo-o.fr>4) continue;   // only what is in recent view
     const cur_=best.get(o.seq); if(!cur_||o.fr>cur_.fr||(o.fr===cur_.fr&&o.n>cur_.n)) best.set(o.seq,o);
@@ -1141,6 +1188,44 @@ function draw(ts){
     ctx.fillText(badgeText, bx + 8, by + 15);
     ctx.restore();
   }
+
+  // Calm, Steady AR Fee Tags for Normal Rows (Only active while in camera view)
+  for(const tag of liveFeeTags){
+    const age = now - tag.t;
+    if(age > 500) continue;
+    const alpha = age < 200 ? 1 : Math.max(0, 1 - (age - 200) / 300);
+    if(alpha <= 0.05) continue;
+
+    for(const k of ['x0','y0','x1','y1']) tag.b[k] += (tag.target[k] - tag.b[k]) * 0.45;
+    const r = toScreen(tag.b);
+
+    ctx.save();
+    ctx.globalAlpha = alpha;
+
+    // Subtle green boundary around the fee or postcode
+    ctx.strokeStyle = 'rgba(74, 222, 128, 0.4)';
+    ctx.lineWidth = 1;
+    rr(r.x - 2, r.y - 2, r.w + 4, r.h + 4, 3);
+    ctx.stroke();
+
+    // Clean, high-tech green AR pill: [#seq ✓ ฿35.00]
+    const tagText = (tag.seq ? `#${tag.seq} ` : '') + `✓ ฿${baht(tag.price)}`;
+    ctx.font = '600 11px "IBM Plex Sans Thai",sans-serif';
+    const tw = ctx.measureText(tagText).width + 12;
+    const th = 18;
+    const tx = Math.max(6, Math.min(W - tw - 6, r.x + r.w + 6));
+    const ty = r.y + (r.h - th) / 2;
+
+    ctx.fillStyle = 'rgba(11, 26, 16, 0.9)';
+    ctx.strokeStyle = '#4ade80';
+    ctx.lineWidth = 1.2;
+    rr(tx, ty, tw, th, 4);
+    ctx.fill(); ctx.stroke();
+
+    ctx.fillStyle = '#4ade80';
+    ctx.fillText(tagText, tx + 6, ty + 13);
+    ctx.restore();
+  }
   requestAnimationFrame(draw);
 }
 
@@ -1384,7 +1469,7 @@ async function liveLoop(loopId){
       continue;
     }
     try{
-      const f=await readFrame(FILTERS[(i*2)%FILTERS.length],currentRot(),null,0);
+      const f=await readFrame(FILTERS[0],currentRot(),null,0);
       if(!f) continue;
       collectLive(f); showBoxes(f);
       if(rotState.manual==null){
