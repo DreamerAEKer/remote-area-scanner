@@ -280,14 +280,14 @@ function classifyRemote(code, rowText=''){
     };
   }
 }
-const APP_VERSION='v18';   // shown in the app; every version is listed at versions.html
+const APP_VERSION='v19';   // shown in the app; every version is listed at versions.html
 const $=id=>document.getElementById(id);
 document.addEventListener('DOMContentLoaded',()=>{ const v=$('ver'); if(v) v.textContent=APP_VERSION; });
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const baht=n=>n==null||isNaN(n)?'—':Number(n).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
 const video=$('video'), still=$('still'), ov=$('ov'), ctx=ov.getContext('2d');
 const grab=document.createElement('canvas'), gctx=grab.getContext('2d',{willReadFrequently:true});
-let mode='cam', worker=null, dets=[], seen=new Set(), lastBeep=0;
+let mode='cam', worker=null, dets=[], seen=new Set(), lastBeep=0, activeInspect=null;
 
 /* ================= Sessions → manifests (ใบนำส่ง) — kept on this phone ================= */
 // session  = {id, name, created, updated, sheets:[sheet], active:sheetId, loose:{code:n}}
@@ -653,6 +653,19 @@ function updateRemoteAlert(){
 function showBoxes(f,capRows){
   const now=performance.now(); let freshRemote=false;
   const rowOf=new Map(f.tr.rows.filter(r=>r.codeWord).map(r=>[r.codeWord,r]));
+
+  // Calculate base price of normal rows (usually 35.00 baht for EMS/eCo Post)
+  const normalPrices=f.tr.rows.filter(r=>!BY_CODE[r.code]&&r.price!=null).map(r=>r.price);
+  const basePrice=normalPrices.length?median(normalPrices):35.0;
+
+  // Active target row in the center of camera view
+  if(f.tr.rows.length){
+    const [sw, sh]=srcSize();
+    const cySrc=sh ? (sh/2) : 500;
+    const centerRow=f.tr.rows.slice().sort((a,b)=>Math.abs(a.y - cySrc) - Math.abs(b.y - cySrc))[0];
+    activeInspect={centerRow, count:f.tr.rows.length, pcs:f.pcs, basePrice, t:now};
+  }
+
   for(const w of f.words){
     const code=asPostcode(w.text); if(!code) continue;
     const isRemote=!!BY_CODE[code];
@@ -664,22 +677,28 @@ function showBoxes(f,capRows){
     const conf=w.confidence||0;
     if(capRows&&row!=null&&capRows.get(row)?.code&&capRows.get(row).code!==code) continue;
 
+    // Price check for +20 surcharge (from official EMS/eCo Post price sheet)
+    const rFee=r?.price;
+    const isSurcharged=rFee!=null && (rFee >= basePrice + 15 || rFee >= 50);
+
     const prev=dets.find(d=>d.code===code&&Math.hypot((d.b.x0+d.b.x1)/2-(b.x0+b.x1)/2, (d.b.y0+d.b.y1)/2-(b.y0+b.y1)/2)<180);
     if(prev){
       prev.target=b; prev.t=now;
       if(row!=null) prev.row=row;
       if(rowText) prev.rowText=rowText;
+      if(rFee!=null) prev.price=rFee;
+      prev.isSurcharged=isSurcharged;
       prev.seenCount=(prev.seenCount||1)+1;
-      // High certainty: Confirm when seen across >= 2 frames or high word confidence
-      if(!prev.confirmed && (prev.seenCount>=2 || conf>=75)){
+      // High certainty: Confirm when has +20 surcharge, or seen across >= 2 frames, or high word confidence
+      if(!prev.confirmed && (isSurcharged || prev.seenCount>=2 || conf>=75)){
         prev.confirmed=true;
         if(!seen.has(code)){ seen.add(code); freshRemote=true; }
       }
     }
     else {
-      // First sighting: require 2nd frame confirmation (or extreme confidence >= 80)
-      const confirmed = (conf>=80);
-      dets.push({code,isRemote:true,b:{...b},target:b,t:now,row,rowText,firstSeen:now,seenCount:1,confirmed,locked:true});
+      // First sighting: if has +20 surcharge or extreme confidence >= 80, confirm right away!
+      const confirmed = (isSurcharged || conf>=80);
+      dets.push({code,isRemote:true,b:{...b},target:b,t:now,row,rowText,price:rFee,isSurcharged,firstSeen:now,seenCount:1,confirmed,locked:true});
       if(confirmed && !seen.has(code)){
         seen.add(code); freshRemote=true;
       }
@@ -713,13 +732,33 @@ function showBoxes(f,capRows){
     }
     liveT=now;
   }
+
+  // DYNAMIC STATUS: Clearly tell user what is being scanned and what is needed next
   const n=confirmedRemotes.length, st=$('status');
-  st.textContent=mode!=='cam'?(n?`👓 AR: พบพื้นที่ห่างไกล ${n} จุด`:'👓 AR: ไม่พบรหัสพื้นที่ห่างไกล')
-    :isFrozen?`❄️ ค้างภาพอยู่ · ${n?`พบพื้นที่ห่างไกล ${n} จุด`:f.tr.rows.length?`เห็น ${f.tr.rows.length} แถว`:'กด ▶ สแกนต่อ'}`
-    :asking?'รอคุณยืนยันใบ ↓'
-    :n?`⚑ ตรวจพบพื้นที่ห่างไกล ${n} จุด! (กด ❄️ ค้างภาพ หรือ 📸 สแกนใบ)`
-    :`👓 AR Glass พร้อมสแกน · มองหาพื้นที่ห่างไกล`;
-  st.className='chip'+(n?' hit':isFrozen?' on':'');
+  const S=cur(), A=activeSheet(S), need=repairNeed(A);
+  if(mode!=='cam'){
+    st.textContent = n ? `👓 AR: พบพื้นที่ห่างไกล ${n} จุด` : `👓 AR: ไม่พบรหัสพื้นที่ห่างไกล`;
+  } else if(isFrozen){
+    st.textContent = `❄️ ค้างภาพอยู่ · ${n?`พบพื้นที่ห่างไกล ${n} จุด`:f.tr.rows.length?`ล็อกไว้ ${f.tr.rows.length} แถว`:'กด ▶ สแกนต่อ'}`;
+  } else if(asking){
+    st.textContent = 'รอคุณยืนยันใบ ↓';
+  } else if(n > 0){
+    const rHead = confirmedRemotes[0];
+    const cr = classifyRemote(rHead.code, rHead.rowText||'');
+    st.textContent = `🚨 พบพื้นที่ห่างไกล! ${rHead.row!=null?`ลำดับ ${rHead.row} · `:''}${rHead.code} (${cr?cr.office:''}) ${rHead.price?`฿${baht(rHead.price)}`:''}`;
+  } else if(need && need.size){
+    st.textContent = `📌 ต้องการ: ส่องซ่อมลำดับ ${[...need].slice(0, 4).join(', ')} ที่ยังขาด`;
+  } else if(f.tr.rows.length > 0){
+    const seqs=f.tr.rows.map(r=>r.seq);
+    const lo=Math.min(...seqs), hi=Math.max(...seqs);
+    const cSeq=activeInspect?.centerRow?.seq;
+    st.textContent = `🟢 สแกนอยู่: ลำดับ ${lo}–${hi} (${f.tr.rows.length} แถว) · เล็งแถว ${cSeq||lo}`;
+  } else if(f.pcs > 0){
+    st.textContent = `🟢 สแกนอยู่: ล็อกรหัสได้ ${f.pcs} จุด · กำลังตรวจตาราง`;
+  } else {
+    st.textContent = `⚡ กล้องสดพร้อม (${Math.round(frameMs||180)}ms) · ส่องไปที่ใบนำส่ง`;
+  }
+  st.className='chip' + (n ? ' hit' : (f.tr.rows.length > 0 || f.pcs > 0) ? ' on' : '');
 }
 const okSatang=v=>/\.(00|25|50|75)$/.test(v.toFixed(2));
 // One deliberate capture = 3 readings of the same sharp image, merged before anything is saved.
@@ -1031,6 +1070,49 @@ function draw(ts){
     ctx.strokeStyle=grad; ctx.lineWidth=2;
     ctx.beginPath(); ctx.moveTo(cx-rw/2, scanY); ctx.lineTo(cx+rw/2, scanY); ctx.stroke();
     ctx.restore();
+
+    // Live Target Inspector HUD (บอกสดว่ากำลังสแกนแถวไหน รหัสอะไร ค่าบริการเท่าไร)
+    if(activeInspect && now - activeInspect.t < 1500 && activeInspect.centerRow){
+      const crw = activeInspect.centerRow;
+      const isRem = !!BY_CODE[crw.code];
+      const cr = isRem ? classifyRemote(crw.code, crw.rowText) : null;
+      const bp = activeInspect.basePrice || 35.0;
+      const isSurcharged = crw.price != null && (crw.price >= bp + 15 || crw.price >= 50);
+      
+      const tSeq = crw.seq != null ? `ลำดับ ${crw.seq} · ` : '';
+      const tCode = `ปณ. ${crw.code}` + (cr ? ` (${cr.office})` : '');
+      const tLine1 = tSeq + tCode;
+      
+      const tPrice = crw.price != null ? `฿${baht(crw.price)}` : 'กำลังอ่านราคา';
+      let tStatus = '✓ ปกติ';
+      if(isRem){
+        if(isSurcharged) tStatus = '🔥 ห่างไกล 100% (+20 บาท ✓)';
+        else tStatus = '⚠️ ห่างไกล (ตรวจราคา +20)';
+      }
+      const tLine2 = `${tPrice} · ${tStatus}`;
+
+      ctx.font = '700 13px "IBM Plex Sans Thai",sans-serif';
+      let hw = Math.max(220, ctx.measureText(tLine1).width, ctx.measureText(tLine2).width) + 26;
+      const hh = 44;
+      let hx = cx - hw/2, hy = cy + rh/2 + 10;
+      if(hy + hh > H - 110) hy = cy - rh/2 - hh - 10;
+
+      ctx.save();
+      ctx.fillStyle = isRem ? 'rgba(30, 18, 5, 0.92)' : 'rgba(12, 18, 26, 0.88)';
+      ctx.strokeStyle = isRem ? '#ffb020' : 'rgba(95, 227, 255, 0.75)';
+      ctx.lineWidth = 1.5;
+      rr(hx, hy, hw, hh, 8);
+      ctx.fill(); ctx.stroke();
+
+      ctx.fillStyle = isRem ? '#ffb020' : '#5fe3ff';
+      ctx.font = '700 13px "IBM Plex Sans Thai",sans-serif';
+      ctx.fillText(tLine1, hx + 12, hy + 18);
+
+      ctx.fillStyle = isRem ? (isSurcharged ? '#4ade80' : '#ffb020') : '#b9c6cf';
+      ctx.font = '500 11px "IBM Plex Sans Thai",sans-serif';
+      ctx.fillText(tLine2, hx + 12, hy + 35);
+      ctx.restore();
+    }
   }
 
   // Row markers when scanning manifest (ONLY show if repair mode is active for missing rows)
