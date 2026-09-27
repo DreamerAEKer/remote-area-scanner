@@ -2,26 +2,27 @@
 <html lang="th">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
 <meta name="theme-color" content="#000000">
 <title>สแกนพื้นที่ห่างไกล</title>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@400;500;700&display=swap" rel="stylesheet">
 <style>
 :root{--amber:#ffb020;--green:#4ade80;--red:#ff6b6b;--text:#fff;--muted:#b9c6cf;--sheet:#11161b;--row:#1a2128;--line:rgba(255,255,255,.14);--font:'IBM Plex Sans Thai',system-ui,sans-serif}
 *{box-sizing:border-box;margin:0;padding:0}
-html,body{height:100%;background:#000;color:var(--text);font-family:var(--font);overflow:hidden}
+html,body{width:100%;max-width:100vw;height:100%;background:#000;color:var(--text);font-family:var(--font);overflow:hidden;overflow-x:hidden;position:fixed;inset:0;margin:0;padding:0;touch-action:none}
 [hidden]{display:none!important}
 video,#still{position:fixed;inset:0;width:100%;height:100%;object-fit:cover}
 #still{object-fit:contain}
 canvas{position:fixed;inset:0;width:100%;height:100%;pointer-events:none}
-#bar{position:fixed;left:0;right:0;top:0;padding:calc(env(safe-area-inset-top,0px) + 8px) 10px 10px;display:flex;gap:6px;align-items:center;flex-wrap:wrap;background:linear-gradient(#000e,#0000);z-index:100}
-.chip{font-size:13px;padding:6px 12px;border-radius:99px;background:rgba(0,0,0,.55);border:1px solid rgba(255,255,255,.25)}
+#bar{position:fixed;left:0;right:0;top:0;width:100%;max-width:100vw;box-sizing:border-box;padding:calc(env(safe-area-inset-top,0px) + 8px) 8px 8px;display:flex;gap:5px;align-items:center;flex-wrap:nowrap;background:linear-gradient(rgba(0,0,0,0.88),rgba(0,0,0,0));z-index:100;overflow:hidden}
+.chip{font-size:12px;padding:6px 10px;border-radius:99px;background:rgba(0,0,0,.65);border:1px solid rgba(255,255,255,.25);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;flex:1}
 .chip.hit{border-color:var(--amber);color:var(--amber);font-weight:700}
-.sp{flex:1}
-button{font:inherit;color:inherit;background:rgba(0,0,0,.55);border:1px solid rgba(255,255,255,.25);border-radius:99px;padding:8px 14px;font-size:14px;cursor:pointer}
+.sp{display:none}
+button{font:inherit;color:inherit;background:rgba(0,0,0,.65);border:1px solid rgba(255,255,255,.25);border-radius:99px;padding:6px 10px;font-size:13px;cursor:pointer;flex-shrink:0;white-space:nowrap}
 button.on{border-color:var(--amber);color:var(--amber)}
-#rotBtn{font-size:13px;padding:6px 12px;font-variant-numeric:tabular-nums}
+#rotBtn{font-size:12px;padding:6px 8px;font-variant-numeric:tabular-nums}
 #rotBtn.on{border-color:var(--amber);color:var(--amber);background:rgba(255,176,32,.18);font-weight:700}
+#sessBtn{font-size:12px;padding:6px 10px}
 
 #scanLoading{position:fixed;inset:0;background:rgba(0,0,0,0.85);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);display:flex;align-items:center;justify-content:center;z-index:999}
 .sl-box{background:#11161b;border:1.5px solid rgba(255,176,32,0.4);border-radius:18px;padding:26px 20px;text-align:center;max-width:320px;width:88%;box-shadow:0 12px 40px rgba(0,0,0,0.8)}
@@ -32,8 +33,8 @@ button.on{border-color:var(--amber);color:var(--amber)}
 .sl-bar{width:100%;height:7px;background:rgba(255,255,255,0.12);border-radius:99px;overflow:hidden;margin-bottom:10px}
 #slFill{height:100%;background:var(--amber);transition:width .3s ease;border-radius:99px}
 .sl-box small{font-size:12px;color:var(--green);font-weight:700}
-#msg{position:fixed;left:16px;right:16px;top:40%;text-align:center;font-size:15px;line-height:1.6;color:var(--muted)}
-#msg button{margin-top:12px}
+#msg{position:fixed;left:12px;right:12px;top:calc(env(safe-area-inset-top,0px) + 54px);text-align:center;font-size:13px;line-height:1.5;background:rgba(20,24,30,0.94);border:1.5px solid var(--amber);padding:10px 14px;border-radius:14px;z-index:900;box-shadow:0 8px 30px rgba(0,0,0,0.8);max-width:380px;margin:0 auto}
+#msg button{margin-top:8px;background:var(--amber);color:#000;font-weight:700;border:0;padding:6px 14px}
 #strip{position:fixed;left:0;right:0;bottom:0;padding:10px 12px calc(env(safe-area-inset-bottom,0px) + 10px);display:flex;gap:8px;overflow-x:auto;background:linear-gradient(#0000,#000c)}
 #strip button{position:relative;flex:none;width:64px;height:84px;padding:0;border-radius:10px;overflow:hidden;border:2px solid rgba(255,255,255,.25)}
 #strip button.sel{border-color:#fff}
@@ -84,11 +85,11 @@ button.on{border-color:var(--amber);color:var(--amber)}
 .acts .pri{background:var(--amber);color:#000;border-color:var(--amber);font-weight:700}
 .acts .danger{color:var(--red);border-color:rgba(255,107,107,.5)}
 .empty{color:var(--muted);font-size:14px;padding:12px 0}
-#cov{position:fixed;left:10px;right:10px;bottom:calc(env(safe-area-inset-bottom,0px) + 12px);max-width:560px;margin:0 auto;padding:10px 12px;border-radius:14px;background:rgba(0,0,0,.72);border:1px solid rgba(255,255,255,.2);text-align:left;display:block;width:auto;font-size:13px}
+#cov{position:fixed;left:10px;right:10px;bottom:calc(env(safe-area-inset-bottom,0px) + 12px);max-width:min(560px, calc(100vw - 20px));margin:0 auto;padding:8px 12px;border-radius:14px;background:rgba(0,0,0,.78);border:1px solid rgba(255,255,255,.2);text-align:left;display:block;width:auto;font-size:12px;overflow:hidden;box-sizing:border-box}
 #cov.up{bottom:calc(env(safe-area-inset-bottom,0px) + 112px)}
 #cov.done{border-color:var(--green)}
-#cov .t{display:flex;gap:8px;align-items:baseline;flex-wrap:wrap;font-variant-numeric:tabular-nums}
-#cov .t b{font-size:14px}
+#cov .t{display:flex;gap:6px;align-items:baseline;flex-wrap:wrap;font-variant-numeric:tabular-nums;overflow:hidden}
+#cov .t b{font-size:13px}
 #cov .t .m{color:var(--muted)}
 .cells{display:flex;flex-wrap:wrap;gap:2px;margin-top:6px}
 .cells i{width:9px;height:9px;border-radius:2px;background:rgba(255,255,255,.14)}
@@ -260,7 +261,7 @@ function classifyRemote(code, rowText=''){
     };
   }
 }
-const APP_VERSION='v22';   // shown in the app; every version is listed at versions.html
+const APP_VERSION='v23';   // shown in the app; every version is listed at versions.html
 const $=id=>document.getElementById(id);
 document.addEventListener('DOMContentLoaded',()=>{ const v=$('ver'); if(v) v.textContent=APP_VERSION; });
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -381,7 +382,7 @@ function refreshUI(){
   const good=a.rows.filter(r=>r.price!=null&&!r.unsure).length, known=a.total!=null&&a.n, pct=known?Math.round(100*good/a.n):0;
   const need=repairNeed(A);
 
-  // Scanned range and missing range guidance
+  // Scanned range and missing range guidance (constrained to prevent horizontal overflow)
   let guideHTML = '';
   if(a.rows.length > 0){
     const minS = a.rows[0].seq, maxS = a.rows.at(-1).seq;
@@ -389,19 +390,19 @@ function refreshUI(){
       ? `หน้า 1 (1–37) · หน้า 2 (38–${maxS}) รวม ${a.rows.length} แถว`
       : `ลำดับ ${minS}–${maxS} (${a.rows.length} แถว)`;
     if(a.missing.length > 0){
-      const missList = a.missing.length <= 6 ? a.missing.join(', ') : `${a.missing.slice(0, 5).join(', ')}... (ขาด ${a.missing.length} แถว)`;
+      const missList = a.missing.length <= 5 ? a.missing.join(', ') : `${a.missing.slice(0, 4).join(', ')}... (ขาด ${a.missing.length} แถว)`;
       const missPos = a.missing[0] > maxS ? '👇 เลื่อนกล้องลง' : (a.missing.at(-1) < minS ? '👆 เลื่อนกล้องขึ้น' : '🔍 เล็งแถวที่ยังว่าง');
-      guideHTML = `<div style="margin-top:6px;font-size:12px;color:#ffe2a8;display:flex;align-items:center;justify-content:space-between;gap:6px">
-        <span>🟢 สแกนแล้ว: ${scannedStr}</span>
-        <span style="color:var(--red);font-weight:700">⚠️ ขาด: ลำดับ ${missList} ${missPos}</span>
+      guideHTML = `<div style="margin-top:4px;font-size:11px;color:#ffe2a8;display:grid;gap:2px;overflow:hidden">
+        <div style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">🟢 สแกนแล้ว: ${scannedStr}</div>
+        <div style="color:var(--red);font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">⚠️ ขาด: ลำดับ ${missList} ${missPos}</div>
       </div>`;
     } else if(a.total == null){
-      guideHTML = `<div style="margin-top:6px;font-size:12px;color:var(--green)">
-        ✓ สแกนได้ ${scannedStr} · ฿${baht(a.sum)} 👉 เลื่อนกล้องลงท้ายใบเพื่ออ่าน "รวมเงิน"
+      guideHTML = `<div style="margin-top:4px;font-size:11px;color:var(--green);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">
+        ✓ สแกนได้ ${scannedStr} · ฿${baht(a.sum)} 👉 เลื่อนลงท้ายใบเพื่อรวมเงิน
       </div>`;
     } else {
-      guideHTML = `<div style="margin-top:6px;font-size:12px;color:var(--green)">
-        ✓ ครบทุกหน้า ${a.hasPages ? `(หน้า 1: ${a.p1Rows.length} แถว + หน้า 2: ${a.p2Rows.length} แถว)` : ''} รวม ${a.n} แถว ฿${baht(a.sum)} ตรงกับยอดรวมเงิน ฿${baht(a.total)}
+      guideHTML = `<div style="margin-top:4px;font-size:11px;color:var(--green);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">
+        ✓ ครบทุกหน้า ${a.hasPages ? `(หน้า 1: ${a.p1Rows.length} + หน้า 2: ${a.p2Rows.length})` : ''} รวม ${a.n} แถว ฿${baht(a.sum)} ตรงยอดท้ายใบ
       </div>`;
     }
   }
@@ -1319,37 +1320,54 @@ let busy=false, camTrack=null, isStartingCam=false, activeLoopId=0;
 
 async function ensureCamRunning(){
   if(mode !== 'cam' || isStartingCam) return;
-  if(video && video.srcObject && camTrack && camTrack.readyState === 'live'){
-    if(video.paused){
-      try{ await video.play(); return; }catch(e){}
-    } else if(video.videoWidth > 0 && !video.paused){
-      return; // camera is live and rendering frames
-    }
+  // If camera is already healthy, ensure msg is hidden and return
+  if(video && video.srcObject && camTrack && camTrack.readyState === 'live' && !video.paused && video.videoWidth > 0){
+    const msg = $('msg'); if(msg) msg.hidden = true;
+    return;
+  }
+  if(video && video.srcObject && camTrack && camTrack.readyState === 'live' && video.paused){
+    try{
+      await video.play();
+      const msg = $('msg'); if(msg) msg.hidden = true;
+      return;
+    }catch(e){}
+  }
+  await startCam();
+}
+
+async function startCam(){
+  if(isStartingCam) return;
+  if(video && video.srcObject && camTrack && camTrack.readyState === 'live' && !video.paused && video.videoWidth > 0){
+    const msg = $('msg'); if(msg) msg.hidden = true;
+    return;
   }
   isStartingCam = true;
   try{
     if(camTrack){ try{ camTrack.stop(); }catch(e){} camTrack = null; }
-    await startCam();
-  }catch(err){
-    console.warn('ensureCamRunning failed:', err);
-  }finally{
-    isStartingCam = false;
-  }
-}
-
-async function startCam(){
-  try{
     const stream=await navigator.mediaDevices.getUserMedia({audio:false,video:{facingMode:{ideal:'environment'},width:{ideal:1920},height:{ideal:1080}}});
     video.srcObject=stream; await video.play();
     const track=camTrack=stream.getVideoTracks()[0], caps=track.getCapabilities?.()||{};
     if(caps.torch){ const b=$('torch'); b.hidden=false; let on=false;
       b.onclick=async()=>{ on=!on; b.classList.toggle('on',on); try{ await track.applyConstraints({advanced:[{torch:on}]}); }catch(e){} }; }
     if(caps.focusMode?.includes('continuous')) track.applyConstraints({advanced:[{focusMode:'continuous'}]}).catch(()=>{});
+    // Camera started successfully - HIDE MSG COMPLETELY!
+    const msg = $('msg');
+    if(msg){ msg.hidden = true; msg.innerHTML = ''; }
   }catch(e){
+    // If video is actually working, never show error message!
+    if(video && video.srcObject && video.videoWidth > 0 && !video.paused){
+      const msg = $('msg'); if(msg) msg.hidden = true;
+      return;
+    }
     $('status').textContent='เปิดกล้องไม่ได้';
-    $('msg').hidden=false;
-    $('msg').innerHTML='เปิดกล้องไม่ได้<br>ต้องเปิดผ่าน https และกดอนุญาตให้ใช้กล้อง<br><button onclick="document.getElementById(\'file\').click()">เลือกรูปแทน</button>';
+    const msg = $('msg');
+    if(msg){
+      msg.hidden = false;
+      msg.innerHTML = 'เปิดกล้องไม่ได้ กรุณาอนุญาตให้ใช้กล้อง <button onclick="document.getElementById(\'file\').click()">เลือกรูปแทน</button>';
+    }
     return;
+  }finally{
+    isStartingCam = false;
   }
   $('status').textContent=`กำลังโหลด AR Glass Engine… (${APP_VERSION})`;
   await getWorker();
