@@ -85,8 +85,12 @@ button.on{border-color:var(--amber);color:var(--amber)}
 .acts .pri{background:var(--amber);color:#000;border-color:var(--amber);font-weight:700}
 .acts .danger{color:var(--red);border-color:rgba(255,107,107,.5)}
 .empty{color:var(--muted);font-size:14px;padding:12px 0}
-#cov{position:fixed;left:10px;right:10px;bottom:calc(env(safe-area-inset-bottom,0px) + 12px);max-width:min(560px, calc(100vw - 20px));margin:0 auto;padding:8px 12px;border-radius:14px;background:rgba(0,0,0,.78);border:1px solid rgba(255,255,255,.2);text-align:left;display:block;width:auto;font-size:12px;overflow:hidden;box-sizing:border-box}
-#cov.up{bottom:calc(env(safe-area-inset-bottom,0px) + 112px)}
+#bottomDock{position:fixed;left:0;right:0;bottom:calc(env(safe-area-inset-bottom,0px) + 10px);display:flex;flex-direction:column;align-items:center;gap:10px;pointer-events:none;z-index:4;padding:0 10px;box-sizing:border-box}
+#bottomDock.up{bottom:calc(env(safe-area-inset-bottom,0px) + 112px)}
+#shutterBar{display:flex;justify-content:center;pointer-events:none;width:100%}
+.shutter-btn{pointer-events:auto;background:rgba(17,22,27,.9);border:1.5px solid var(--amber);color:#fff;border-radius:99px;padding:9px 22px;font-size:14px;font-weight:700;display:flex;align-items:center;gap:8px;box-shadow:0 4px 18px rgba(255,176,32,.35),0 0 10px rgba(0,0,0,.8);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);cursor:pointer;transition:transform .12s,background .12s}
+.shutter-btn:active{transform:scale(.95);background:var(--amber);color:#000}
+#cov{pointer-events:auto;max-width:min(560px, calc(100vw - 20px));margin:0 auto;padding:8px 12px;border-radius:14px;background:rgba(0,0,0,.82);border:1px solid rgba(255,255,255,.2);text-align:left;display:block;width:100%;font-size:12px;overflow:hidden;box-sizing:border-box}
 #cov.done{border-color:var(--green)}
 #cov .t{display:flex;gap:6px;align-items:baseline;flex-wrap:wrap;font-variant-numeric:tabular-nums;overflow:hidden}
 #cov .t b{font-size:13px}
@@ -107,7 +111,7 @@ video{-webkit-touch-callout:none;-webkit-user-select:none;user-select:none;touch
 #ask .ab{display:flex;gap:8px} #ask .ab button{flex:1;border-radius:10px}
 #ask .pri{background:var(--amber);color:#000;border-color:var(--amber);font-weight:700}
 #ver{position:fixed;right:10px;top:calc(env(safe-area-inset-top,0px) + 64px);font-size:11px;color:rgba(255,255,255,.55);text-decoration:none;z-index:3}
-#bar,#cov,#review,#sheet,#ask,#toast,#strip{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
+#bar,#cov,#review,#sheet,#ask,#toast,#strip,#dbModal{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
 input{-webkit-user-select:text;user-select:text}
 #cov .pct{color:var(--green);font-size:15px}
 #cov .bar{height:5px;border-radius:3px;background:rgba(255,255,255,.12);margin-top:6px;overflow:hidden}
@@ -128,14 +132,50 @@ input{-webkit-user-select:text;user-select:text}
 #toast.ok{background:var(--green)}
 .sheetrow .cells{margin-top:6px}
 .back{border-radius:10px;padding:6px 10px;font-size:13px}
-#shutterBar{position:fixed;left:0;right:0;bottom:calc(env(safe-area-inset-bottom,0px) + 78px);display:flex;justify-content:center;pointer-events:none;z-index:4}
-.shutter-btn{pointer-events:auto;background:rgba(17,22,27,.85);border:1.5px solid var(--amber);color:#fff;border-radius:99px;padding:9px 22px;font-size:14px;font-weight:700;display:flex;align-items:center;gap:8px;box-shadow:0 4px 18px rgba(255,176,32,.35),0 0 10px rgba(0,0,0,.8);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);cursor:pointer;transition:transform .12s,background .12s}
-.shutter-btn:active{transform:scale(.95);background:var(--amber);color:#000}
+
+/* Reference Database & Search Modal */
+#dbBtn{background:rgba(255,176,32,0.18);border-color:rgba(255,176,32,0.5);color:var(--amber);font-weight:700;font-size:12px;padding:6px 10px}
+#dbModal{position:fixed;inset:0;background:rgba(0,0,0,.78);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);display:flex;align-items:flex-end;justify-content:center;z-index:950}
+#dbModal .in{width:100%;max-width:620px;height:90vh;max-height:92%;background:#13181e;border-radius:20px 20px 0 0;padding:16px 16px calc(env(safe-area-inset-bottom,0px) + 20px);display:flex;flex-direction:column;box-shadow:0 -8px 36px rgba(0,0,0,0.85);border:1px solid rgba(255,255,255,0.16);box-sizing:border-box}
+.db-header{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:12px}
+.db-header h3{font-size:17px;font-weight:700;color:#fff;display:flex;align-items:center;gap:6px;margin:0}
+.db-close{width:32px;height:32px;border-radius:50%;background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.2);color:#fff;font-size:16px;cursor:pointer;display:flex;align-items:center;justify-content:center}
+.db-search-wrap{position:relative;display:flex;align-items:center;margin-bottom:10px}
+.db-search-wrap input{width:100%;background:#1c232c;border:1.5px solid rgba(255,255,255,0.2);border-radius:12px;padding:10px 38px 10px 36px;color:#fff;font-size:14px;outline:none;font-family:inherit}
+.db-search-wrap input:focus{border-color:var(--amber);background:#222b36}
+.db-search-icon{position:absolute;left:12px;pointer-events:none;font-size:14px;color:var(--muted)}
+.db-search-clear{position:absolute;right:10px;background:none;border:none;color:var(--muted);font-size:14px;padding:4px 8px;cursor:pointer}
+.db-tabs{display:flex;gap:6px;overflow-x:auto;padding-bottom:6px;margin-bottom:10px;-webkit-overflow-scrolling:touch}
+.db-tab{flex:none;font-size:12px;padding:6px 12px;border-radius:99px;background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.16);color:var(--muted);cursor:pointer;white-space:nowrap}
+.db-tab.active{background:var(--amber);color:#000;border-color:var(--amber);font-weight:700}
+.db-list{flex:1;overflow-y:auto;overflow-x:hidden;display:flex;flex-direction:column;gap:8px;-webkit-overflow-scrolling:touch;padding-right:2px}
+.db-sec{display:flex;flex-direction:column;gap:6px;margin-bottom:8px}
+.db-sec-h{font-size:12px;font-weight:700;color:var(--amber);text-transform:uppercase;letter-spacing:0.5px;display:flex;align-items:center;gap:6px;padding:4px 0}
+.db-card{background:#1a222b;border:1px solid rgba(255,255,255,0.1);border-radius:12px;padding:10px 12px;display:flex;flex-direction:column;gap:4px;line-height:1.4}
+.db-card.remote{border-color:rgba(255,176,32,0.4);background:rgba(255,176,32,0.06)}
+.db-card.island{border-color:rgba(74,222,128,0.4);background:rgba(74,222,128,0.06)}
+.db-card.normal{border-color:rgba(185,198,207,0.25)}
+.db-card-top{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.db-card-top b{font-size:14px;color:#fff}
+.db-badge{font-size:11px;font-weight:700;padding:2px 8px;border-radius:99px;white-space:nowrap}
+.db-badge.island{background:#0e4429;color:var(--green);border:1px solid rgba(74,222,128,0.4)}
+.db-badge.remote{background:#422a05;color:var(--amber);border:1px solid rgba(255,176,32,0.4)}
+.db-badge.ok{background:#0e4429;color:var(--green);border:1px solid rgba(74,222,128,0.4)}
+.db-card-sub{font-size:12px;color:var(--muted)}
+.db-card-sub b{color:#fff}
+.db-card-rule{font-size:11px;color:#85e89d;margin-top:2px}
+.db-rate-table{width:100%;border-collapse:collapse;font-size:12px;text-align:left;margin-top:6px}
+.db-rate-table th{background:#10151b;padding:8px 6px;color:var(--muted);border-bottom:1px solid rgba(255,255,255,0.15)}
+.db-rate-table td{padding:7px 6px;border-bottom:1px solid rgba(255,255,255,0.07)}
+.db-rate-table tr:hover td{background:rgba(255,255,255,0.03)}
+.db-rate-table .hl{color:var(--amber);font-weight:700}
+
 @media (orientation: landscape) {
   #bar{padding:calc(env(safe-area-inset-top,0px) + 6px) calc(env(safe-area-inset-right,0px) + 12px) 6px calc(env(safe-area-inset-left,0px) + 12px);gap:6px}
-  #shutterBar{left:auto;right:calc(env(safe-area-inset-right,0px) + 16px);top:50%;bottom:auto;transform:translateY(-50%)}
+  #bottomDock{display:contents}
+  #shutterBar{position:fixed;left:auto;right:calc(env(safe-area-inset-right,0px) + 16px);top:50%;bottom:auto;transform:translateY(-50%);width:auto}
   .shutter-btn{padding:14px 16px;font-size:13px;border-radius:20px;flex-direction:column;gap:4px;max-width:140px;text-align:center}
-  #cov{left:calc(env(safe-area-inset-left,0px) + 12px);right:auto;bottom:calc(env(safe-area-inset-bottom,0px) + 8px);max-width:320px;font-size:11px;padding:6px 10px}
+  #cov{position:fixed;left:calc(env(safe-area-inset-left,0px) + 12px);right:auto;bottom:calc(env(safe-area-inset-bottom,0px) + 8px);max-width:320px;font-size:11px;padding:6px 10px;width:auto}
   #cov .t b{font-size:12px}
   .repair-bar{max-width:480px;left:50%;transform:translateX(-50%)}
   #remoteAlert{left:calc(env(safe-area-inset-left,0px) + 12px);right:auto;top:calc(env(safe-area-inset-top,0px) + 48px);max-width:360px}
@@ -151,6 +191,7 @@ input{-webkit-user-select:text;user-select:text}
   <span class="chip" id="status">กำลังเปิดกล้อง…</span>
   <span class="sp"></span>
   <button id="rotBtn" aria-label="หมุนทิศทางเอกสาร">🔄 ออโต้</button>
+  <button id="dbBtn" aria-label="ค้นหารหัสและดูข้อมูล 85 พื้นที่">🔍 85 พื้นที่</button>
   <button id="sessBtn" aria-label="ดูชุดที่สแกน">ชุด · 0 แถว</button>
   <button id="torch" hidden aria-label="ไฟฉาย">⚡</button>
   <button id="cam" hidden aria-label="กลับไปใช้กล้อง">📷</button>
@@ -169,55 +210,133 @@ input{-webkit-user-select:text;user-select:text}
 <div id="msg" hidden></div>
 <div id="strip" hidden></div>
 <div id="ring" hidden></div>
-<div id="shutterBar"><button id="snapBtn" class="shutter-btn" aria-label="สแกนใบนำส่ง"><span>📸</span> สแกนใบนำส่ง</button></div>
-<button id="cov" hidden aria-label="ดูความคืบหน้าของใบนำส่ง"></button>
+<div id="bottomDock">
+  <div id="shutterBar"><button id="snapBtn" class="shutter-btn" aria-label="สแกนใบนำส่ง"><span>📸</span> สแกนใบนำส่ง</button></div>
+  <button id="cov" hidden aria-label="ดูความคืบหน้าของใบนำส่ง"></button>
+</div>
 <a id="ver" href="versions.html"></a>
 <div id="toast" hidden></div>
 <div id="ask" hidden></div>
 <div id="review" hidden><div class="in" id="reviewIn"></div></div>
 <div id="sheet" hidden><div class="in" id="sheetIn"></div></div>
+<div id="dbModal" hidden><div class="in" id="dbModalIn"></div></div>
 <input type="file" id="file" accept="image/*" multiple hidden>
 
 <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js"></script>
 <script>
 // รหัสไปรษณีย์ 85 พื้นที่ห่างไกล/เกาะ (ประกาศไปรษณีย์ไทย มีผล 1 ม.ค. 2569)
-// [ลำดับ, จังหวัด, ที่ทำการ, รหัส, พื้นที่ ('' = ทุกพื้นที่ของรหัส)]
+// [ลำดับ, กลุ่มพื้นที่ (1–34), จังหวัด, ที่ทำการ, รหัสไปรษณีย์, พื้นที่/เงื่อนไข, เป็นเกาะหรือไม่]
 const DATA=[
-[1,'ชลบุรี','เกาะสีชัง','20120',''],[2,'ชลบุรี','บางละมุง','20150','เฉพาะเกาะล้าน'],
-[3,'ระยอง','เพ','21160','เฉพาะเกาะเสม็ด'],[4,'ตราด','ตราด','23000','เฉพาะเกาะกูด'],
-[5,'ตราด','แหลมงอบ','23120','เฉพาะเกาะหมาก'],[6,'ตราด','เกาะช้าง','23170',''],
-[7,'เชียงใหม่','สะเมิง','50250',''],[8,'เชียงใหม่','อมก๋อย','50310',''],[9,'เชียงใหม่','เวียงแหง','50350',''],
-[10,'น่าน','ทุ่งช้าง','55130',''],[11,'น่าน','บ่อเกลือ','55220',''],
-[12,'เชียงราย','เวียงป่าเป้า','57170',''],[13,'เชียงราย','แม่สรวย','57180',''],[14,'เชียงราย','แม่เจดีย์','57260',''],
-[15,'เชียงราย','เวียงแก่น','57310',''],[16,'เชียงราย','ขุนตาล','57340',''],
-[17,'แม่ฮ่องสอน','แม่ฮ่องสอน','58000',''],[18,'แม่ฮ่องสอน','แม่สะเรียง','58110',''],[19,'แม่ฮ่องสอน','แม่ลาน้อย','58120',''],
-[20,'แม่ฮ่องสอน','ปาย','58130',''],[21,'แม่ฮ่องสอน','ขุนยวม','58140',''],[22,'แม่ฮ่องสอน','ปางมะผ้า','58150',''],
-[23,'ตาก','ท่าสองยาง','63150',''],[24,'ตาก','อุ้มผาง','63170',''],
-[25,'กาญจนบุรี','ทองผาภูมิ','71180',''],[26,'กาญจนบุรี','สังขละบุรี','71240',''],
-[27,'กระบี่','เหนือคลอง','81130','เฉพาะเกาะศรีบอยา'],[28,'กระบี่','เกาะลันตา','81150',''],[29,'กระบี่','เกาะพีพี','81210',''],
-[30,'พังงา','พังงา','82000','เฉพาะเกาะปันหยี'],[31,'พังงา','เกาะยาว','82160',''],
-[32,'ภูเก็ต','ภูเก็ต','83000',''],[33,'ภูเก็ต','กะรน','83100',''],[34,'ภูเก็ต','ถลาง','83110',''],
-[35,'ภูเก็ต','กะทู้','83120',''],[36,'ภูเก็ต','ราไวย์','83130',''],[37,'ภูเก็ต','ป่าตอง','83150',''],
-[38,'สุราษฎร์ธานี','เกาะสมุย','84140',''],[39,'สุราษฎร์ธานี','ละไม','84310',''],[40,'สุราษฎร์ธานี','เฉวง','84320',''],
-[41,'สุราษฎร์ธานี','แม่น้ำ','84330',''],[42,'สุราษฎร์ธานี','ดอนสัก','84220','เฉพาะเกาะพลวย'],[43,'สุราษฎร์ธานี','ดอนสัก','84220','เฉพาะเกาะนกเภา'],
-[44,'สุราษฎร์ธานี','เกาะพะงัน','84280',''],[45,'สุราษฎร์ธานี','เกาะเต่า','84360',''],
-[46,'ระนอง','ระนอง','85000','เฉพาะเกาะพยาม'],
-[47,'สตูล','สตูล','91000','เฉพาะเกาะสาหร่าย'],[48,'สตูล','สตูล','91000','เฉพาะปูยู'],
-[49,'สตูล','ละงู','91110','เฉพาะเกาะหลีเป๊ะ'],[50,'สตูล','ละงู','91110','เฉพาะเกาะบุโหลน'],
-[51,'ตรัง','กันตัง','92110','เฉพาะเกาะลิบง'],[52,'ตรัง','กันตัง','92110','เฉพาะเกาะมุก'],[53,'ตรัง','ปะเหลียน','92120','เฉพาะเกาะสุกร'],
-[54,'ปัตตานี','ปัตตานี','94000',''],[55,'ปัตตานี','สายบุรี','94110',''],[56,'ปัตตานี','โคกโพธิ์','94120',''],
-[57,'ปัตตานี','ปะนาเระ','94130',''],[58,'ปัตตานี','มายอ','94140',''],[59,'ปัตตานี','ยะหริ่ง','94150',''],
-[60,'ปัตตานี','ยะรัง','94160',''],[61,'ปัตตานี','หนองจิก','94170',''],[62,'ปัตตานี','นาประดู่','94180',''],
-[63,'ปัตตานี','ปาลัส','94190',''],[64,'ปัตตานี','ไม้แก่น','94220',''],[65,'ปัตตานี','กะพ้อ','94230',''],
-[66,'ยะลา','ยะลา','95000',''],[67,'ยะลา','เบตง','95110',''],[68,'ยะลา','ยะหา','95120',''],[69,'ยะลา','บันนังสตา','95130',''],
-[70,'ยะลา','รามัน','95140',''],[71,'ยะลา','ธารโต','95150',''],[72,'ยะลา','ลำใหม่','95160',''],[73,'ยะลา','แม่หวาด','95170',''],
-[74,'นราธิวาส','นราธิวาส','96000',''],[75,'นราธิวาส','ตากใบ','96110',''],[76,'นราธิวาส','สุไหงโก-ลก','96120',''],
-[77,'นราธิวาส','ตันหยงมัส','96130',''],[78,'นราธิวาส','สุไหงปาดี','96140',''],[79,'นราธิวาส','รือเสาะ','96150',''],
-[80,'นราธิวาส','แว้ง','96160',''],[81,'นราธิวาส','บาเจาะ','96170',''],[82,'นราธิวาส','ยี่งอ','96180',''],
-[83,'นราธิวาส','สุคิริน','96190',''],[84,'นราธิวาส','ศรีสาคร','96210',''],[85,'นราธิวาส','ดุซงญอ','96220',''],
+  [1, 1, 'ชลบุรี', 'เกาะสีชัง', '20120', 'เกาะสีชัง', true],
+  [2, 2, 'ชลบุรี', 'บางละมุง', '20150', 'เฉพาะเกาะล้าน', true],
+  [3, 3, 'ระยอง', 'เพ', '21160', 'เฉพาะเกาะเสม็ด', true],
+  [4, 4, 'ตราด', 'ตราด', '23000', 'เฉพาะเกาะกูด', true],
+  [5, 5, 'ตราด', 'แหลมงอบ', '23120', 'เฉพาะเกาะหมาก', true],
+  [6, 6, 'ตราด', 'เกาะช้าง', '23170', 'ทุกพื้นที่ (เกาะช้าง)', true],
+  [7, '-', 'เชียงใหม่', 'สะเมิง', '50250', '', false],
+  [8, 7, 'เชียงใหม่', 'อมก๋อย', '50310', '', false],
+  [9, '-', 'เชียงใหม่', 'เวียงแหง', '50350', '', false],
+  [10, 8, 'น่าน', 'ทุ่งช้าง', '55130', '', false],
+  [11, 8, 'น่าน', 'บ่อเกลือ', '55220', '', false],
+  [12, 9, 'เชียงราย', 'เวียงป่าเป้า', '57170', '', false],
+  [13, 9, 'เชียงราย', 'แม่สรวย', '57180', '', false],
+  [14, 9, 'เชียงราย', 'แม่เจดีย์', '57260', '', false],
+  [15, 9, 'เชียงราย', 'เวียงแก่น', '57310', '', false],
+  [16, 9, 'เชียงราย', 'ขุนตาล', '57340', '', false],
+  [17, 10, 'แม่ฮ่องสอน', 'แม่ฮ่องสอน', '58000', '', false],
+  [18, 10, 'แม่ฮ่องสอน', 'แม่สะเรียง', '58110', '', false],
+  [19, 10, 'แม่ฮ่องสอน', 'แม่ลาน้อย', '58120', '', false],
+  [20, 10, 'แม่ฮ่องสอน', 'ปาย', '58130', '', false],
+  [21, 10, 'แม่ฮ่องสอน', 'ขุนยวม', '58140', '', false],
+  [22, 10, 'แม่ฮ่องสอน', 'ปางมะผ้า', '58150', '', false],
+  [23, 11, 'ตาก', 'ท่าสองยาง', '63150', '', false],
+  [24, 11, 'ตาก', 'อุ้มผาง', '63170', '', false],
+  [25, 12, 'กาญจนบุรี', 'ทองผาภูมิ', '71180', '', false],
+  [26, 12, 'กาญจนบุรี', 'สังขละบุรี', '71240', '', false],
+  [27, 13, 'กระบี่', 'เหนือคลอง', '81130', 'เฉพาะเกาะศรีบอยา', true],
+  [28, 14, 'กระบี่', 'เกาะลันตา', '81150', '', true],
+  [29, 15, 'กระบี่', 'เกาะพีพี', '81210', '', true],
+  [30, 16, 'พังงา', 'พังงา', '82000', 'เฉพาะเกาะปันหยี', true],
+  [31, 17, 'พังงา', 'เกาะยาว', '82160', '', true],
+  [32, 18, 'ภูเก็ต', 'ภูเก็ต', '83000', '', false],
+  [33, 18, 'ภูเก็ต', 'กะรน', '83100', '', false],
+  [34, 18, 'ภูเก็ต', 'ถลาง', '83110', '', false],
+  [35, 18, 'ภูเก็ต', 'กะทู้', '83120', '', false],
+  [36, 18, 'ภูเก็ต', 'ราไวย์', '83130', '', false],
+  [37, 18, 'ภูเก็ต', 'ป่าตอง', '83150', '', false],
+  [38, 19, 'สุราษฎร์ธานี', 'เกาะสมุย', '84140', '', true],
+  [39, 19, 'สุราษฎร์ธานี', 'ละไม', '84310', '', true],
+  [40, 19, 'สุราษฎร์ธานี', 'เฉวง', '84320', '', true],
+  [41, 19, 'สุราษฎร์ธานี', 'แม่น้ำ', '84330', '', true],
+  [42, 20, 'สุราษฎร์ธานี', 'ดอนสัก', '84220', 'เฉพาะเกาะพลวย', true],
+  [43, 21, 'สุราษฎร์ธานี', 'ดอนสัก', '84220', 'เฉพาะเกาะนกเภา', true],
+  [44, 22, 'สุราษฎร์ธานี', 'เกาะพะงัน', '84280', '', true],
+  [45, 23, 'สุราษฎร์ธานี', 'เกาะเต่า', '84360', '', true],
+  [46, 24, 'ระนอง', 'ระนอง', '85000', 'เฉพาะเกาะพยาม', true],
+  [47, 25, 'สตูล', 'สตูล', '91000', 'เฉพาะเกาะสาหร่าย', true],
+  [48, 26, 'สตูล', 'สตูล', '91000', 'เฉพาะปูยู', true],
+  [49, 27, 'สตูล', 'ละงู', '91110', 'เฉพาะเกาะหลีเป๊ะ', true],
+  [50, 28, 'สตูล', 'ละงู', '91110', 'เฉพาะเกาะบุโหลน', true],
+  [51, 29, 'ตรัง', 'กันตัง', '92110', 'เฉพาะเกาะลิบง', true],
+  [52, 30, 'ตรัง', 'กันตัง', '92110', 'เฉพาะเกาะมุก', true],
+  [53, 31, 'ตรัง', 'ปะเหลียน', '92120', 'เฉพาะเกาะสุกร', true],
+  [54, 32, 'ปัตตานี', 'ปัตตานี', '94000', '', false],
+  [55, 32, 'ปัตตานี', 'สายบุรี', '94110', '', false],
+  [56, 32, 'ปัตตานี', 'โคกโพธิ์', '94120', '', false],
+  [57, 32, 'ปัตตานี', 'ปะนาเระ', '94130', '', false],
+  [58, 32, 'ปัตตานี', 'มายอ', '94140', '', false],
+  [59, 32, 'ปัตตานี', 'ยะหริ่ง', '94150', '', false],
+  [60, 32, 'ปัตตานี', 'ยะรัง', '94160', '', false],
+  [61, 32, 'ปัตตานี', 'หนองจิก', '94170', '', false],
+  [62, 32, 'ปัตตานี', 'นาประดู่', '94180', '', false],
+  [63, 32, 'ปัตตานี', 'ปาลัส', '94190', '', false],
+  [64, 32, 'ปัตตานี', 'ไม้แก่น', '94220', '', false],
+  [65, 32, 'ปัตตานี', 'กะพ้อ', '94230', '', false],
+  [66, 33, 'ยะลา', 'ยะลา', '95000', '', false],
+  [67, 33, 'ยะลา', 'เบตง', '95110', '', false],
+  [68, 33, 'ยะลา', 'ยะหา', '95120', '', false],
+  [69, 33, 'ยะลา', 'บันนังสตา', '95130', '', false],
+  [70, 33, 'ยะลา', 'รามัน', '95140', '', false],
+  [71, 33, 'ยะลา', 'ธารโต', '95150', '', false],
+  [72, 33, 'ยะลา', 'ลำใหม่', '95160', '', false],
+  [73, 33, 'ยะลา', 'แม่หวาด', '95170', '', false],
+  [74, 34, 'นราธิวาส', 'นราธิวาส', '96000', '', false],
+  [75, 34, 'นราธิวาส', 'ตากใบ', '96110', '', false],
+  [76, 34, 'นราธิวาส', 'สุไหงโก-ลก', '96120', '', false],
+  [77, 34, 'นราธิวาส', 'ตันหยงมัส', '96130', '', false],
+  [78, 34, 'นราธิวาส', 'สุไหงปาดี', '96140', '', false],
+  [79, 34, 'นราธิวาส', 'รือเสาะ', '96150', '', false],
+  [80, 34, 'นราธิวาส', 'แว้ง', '96160', '', false],
+  [81, 34, 'นราธิวาส', 'บาเจาะ', '96170', '', false],
+  [82, 34, 'นราธิวาส', 'ยี่งอ', '96180', '', false],
+  [83, 34, 'นราธิวาส', 'สุคิริน', '96190', '', false],
+  [84, 34, 'นราธิวาส', 'ศรีสาคร', '96210', '', false],
+  [85, 34, 'นราธิวาส', 'ดุซงญอ', '96220', '', false]
 ];
 const BY_CODE={};
-for(const [seq,prov,office,code,area] of DATA) (BY_CODE[code] ||= []).push({seq,prov,office,area});
+for(const [seq,group,prov,office,code,area,isIsland] of DATA){
+  (BY_CODE[code] ||= []).push({seq,group,prov,office,area,isIsland});
+}
+
+// ตารางอัตราค่าบริการบวกเพิ่มปลายทางห่างไกล/เกาะ (eco-post และ EMS ในประเทศ บวกเพิ่ม +20 บาท/ชิ้น)
+const RATE_TABLE=[
+  {w:'ไม่เกิน 20 กรัม', ecoN:20, ecoR:40, emsN:32, emsR:52},
+  {w:'เกิน 20 – 100 กรัม', ecoN:22, ecoR:42, emsN:37, emsR:57},
+  {w:'เกิน 100 – 250 กรัม', ecoN:26, ecoR:46, emsN:42, emsR:62},
+  {w:'เกิน 250 – 500 กรัม', ecoN:30, ecoR:50, emsN:52, emsR:72},
+  {w:'เกิน 500 – 1,000 กรัม', ecoN:40, ecoR:60, emsN:67, emsR:87},
+  {w:'เกิน 1,000 – 1,500 กรัม', ecoN:60, ecoR:80, emsN:82, emsR:102},
+  {w:'เกิน 1,500 – 2,000 กรัม', ecoN:60, ecoR:80, emsN:97, emsR:117},
+  {w:'เกิน 2,000 – 2,500 กรัม', ecoN:80, ecoR:100, emsN:100, emsR:120},
+  {w:'เกิน 2,500 – 3,000 กรัม', ecoN:80, ecoR:100, emsN:105, emsR:125},
+  {w:'เกิน 3,000 – 3,500 กรัม', ecoN:80, ecoR:100, emsN:110, emsR:130},
+  {w:'เกิน 3,500 – 4,000 กรัม', ecoN:120, ecoR:140, emsN:120, emsR:140},
+  {w:'เกิน 4,000 – 4,500 กรัม', ecoN:120, ecoR:140, emsN:120, emsR:140},
+  {w:'เกิน 4,500 – 5,000 กรัม', ecoN:120, ecoR:140, emsN:120, emsR:140},
+  {w:'เกิน 5,000 – 5,500 กรัม', ecoN:120, ecoR:140, emsN:130, emsR:150},
+  {w:'เกิน 5,500 – 6,000 กรัม', ecoN:120, ecoR:140, emsN:140, emsR:160},
+  {w:'เกิน 6,000 – 10,000 กรัม', ecoN:160, ecoR:180, emsN:150, emsR:170}
+];
 
 function classifyRemote(code, rowText=''){
   const list=BY_CODE[code];
@@ -261,7 +380,7 @@ function classifyRemote(code, rowText=''){
     };
   }
 }
-const APP_VERSION='v29';   // shown in the app; every version is listed at versions.html
+const APP_VERSION='v30';   // shown in the app; every version is listed at versions.html
 const $=id=>document.getElementById(id);
 document.addEventListener('DOMContentLoaded',()=>{ const v=$('ver'); if(v) v.textContent=APP_VERSION; });
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -1445,6 +1564,7 @@ function sessionHTML(S,isCur){
     ` : ''}
     <div class="sec">ใบนำส่ง (แตะเพื่อดู / แก้)</div>
     <div class="list">${sheets}</div>
+    <button id="sOpenDb" style="width:100%;margin:10px 0;background:rgba(255,176,32,0.16);border:1.5px solid var(--amber);color:var(--amber);font-weight:700;padding:10px;border-radius:12px;font-size:13px;display:flex;align-items:center;justify-content:center;gap:6px;cursor:pointer">🔍 ค้นหารหัส ปณ. & ฐานข้อมูล 85 พื้นที่</button>
     <div class="acts">${isCur
       ?`<button id="sAdd">+ ใบใหม่</button><button class="pri" id="sNew">จบชุดนี้ เริ่มชุดใหม่</button><button id="sHist">ประวัติ (${sessions.filter(x=>!isEmpty(x)).length})</button><button class="danger" id="sDel">ล้างชุดนี้</button>`
       :`<button class="pri" id="sResume">สแกนต่อในชุดนี้</button><button id="sHist">กลับไปประวัติ</button><button class="danger" id="sDel">ลบชุดนี้</button>`}</div>
@@ -1477,6 +1597,7 @@ function sheetHTML(S,sh){
     ${v}${unsureNote}${fix}
     ${a.remote.length?`<div class="sec">พื้นที่ห่างไกล / เกาะ (${a.remote.length})</div><div class="list">${a.remote.map(r=>remoteItem({...r,no:sh.no},false)).join('')}</div>`:''}
     ${a.n?`<div class="sec">ค่าบริการแต่ละลำดับ (แตะเพื่อแก้)</div><div class="grid">${grid}</div>`:''}
+    <button class="sOpenDbSheet" style="width:100%;margin:10px 0;background:rgba(255,176,32,0.16);border:1px solid var(--amber);color:var(--amber);font-weight:700;padding:9px;border-radius:10px;font-size:12px;display:flex;align-items:center;justify-content:center;gap:6px;cursor:pointer">🔍 ค้นหารหัส ปณ. ในใบนี้ / 85 พื้นที่</button>
     <div class="acts"><button class="pri" id="sUse">📷 สแกนใบนี้ต่อ</button><button id="sClearThisSheet" style="border-color:var(--amber);color:var(--amber)">🗑️ ล้างข้อมูลใบนี้</button><button class="danger" id="sDelSheet">ลบใบนี้</button></div>`;
 }
 function historyHTML(){
@@ -1532,12 +1653,236 @@ function renderSheet(){
       $('sAdd').onclick=()=>{ const A=activeSheet(S); const n=sheetEmpty(A)?A:newSheet(S); persist(); toast(`สแกนใบที่ ${n.no}`); refreshUI(); };
       $('sNew').onclick=()=>{ if(isEmpty(cur())) sessions=sessions.filter(x=>x.id!==curId); newSession(); dets=[]; seen=new Set(); refreshUI(); };
     }else $('sResume').onclick=()=>{ if(isEmpty(cur())) sessions=sessions.filter(x=>x.id!==curId); curId=S.id; persist(); view={k:'sess'}; refreshUI(); renderSheet(); };
+    if($('sOpenDb')) $('sOpenDb').onclick=()=>openDbModal('all');
+    el.querySelectorAll('.sOpenDbSheet').forEach(b=>b.onclick=()=>openDbModal('scanned'));
   }
   $('sClose').onclick=()=>$('sheet').hidden=true;
 }
 $('sessBtn').onclick=()=>{ view={k:'sess'}; $('sheet').hidden=false; renderSheet(); };
 $('cov').onclick=e=>{ if(e.target.id==='covReset') return; view={k:'sheet',id:activeSheet(cur()).id}; $('sheet').hidden=false; renderSheet(); };
 $('sheet').onclick=e=>{ if(e.target.id==='sheet') $('sheet').hidden=true; };
+
+/* ================= 85 Remote Areas & Island Database + Search ================= */
+let dbTab='all'; // 'all', 'island', 'remote', 'scanned', 'rates'
+let dbQuery='';
+
+function openDbModal(tab='all', query=''){
+  dbTab=tab;
+  dbQuery=query;
+  $('dbModal').hidden=false;
+  renderDbModal();
+  setTimeout(()=>{
+    const inp=$('dbSearch');
+    if(inp){ inp.focus(); if(query) inp.select(); }
+  },50);
+}
+
+function closeDbModal(){
+  $('dbModal').hidden=true;
+}
+
+function renderDbModal(){
+  const S=cur(), A=activeSheet(S), a=sheetSummary(A);
+  const scannedCount = a.rows.length;
+  const q = dbQuery.trim().toLowerCase();
+  
+  // Find matches in scanned manifest rows
+  const scannedMatches = q ? a.rows.filter(r => {
+    return (r.code && r.code.includes(q)) ||
+           (r.tracking && r.tracking.toLowerCase().includes(q)) ||
+           String(r.seq) === q ||
+           (r.price != null && String(r.price) === q);
+  }) : a.rows;
+  
+  // Find matches in DATA
+  const is5DigitZip = /^\d{5}$/.test(q);
+  const dataMatches = DATA.filter(([seq, group, prov, office, code, area, isIsland]) => {
+    if(dbTab === 'island' && !isIsland) return false;
+    if(dbTab === 'remote' && isIsland) return false;
+    if(!q) return true;
+    return code.includes(q) ||
+           prov.toLowerCase().includes(q) ||
+           office.toLowerCase().includes(q) ||
+           (area && area.toLowerCase().includes(q)) ||
+           String(group) === q ||
+           `กลุ่ม ${group}`.toLowerCase().includes(q) ||
+           String(seq) === q;
+  });
+
+  const isNormalZip = is5DigitZip && !BY_CODE[q];
+
+  let bodyHTML = '';
+
+  if(dbTab === 'rates'){
+    bodyHTML = `
+      <div class="db-sec">
+        <div class="db-sec-h">📊 ตารางอัตราค่าบริการบวกเพิ่มปลายทางห่างไกล / เกาะ</div>
+        <p style="font-size:12px;color:var(--muted);margin-bottom:8px">
+          ประกาศไปรษณีย์ไทย (มีผลตั้งแต่ 1 ม.ค. 2569)<br>
+          <b style="color:var(--amber)">บริการ eco-post และ EMS ในประเทศ บวกเพิ่ม +20 บาท/ชิ้น</b>
+        </p>
+        <table class="db-rate-table">
+          <thead>
+            <tr>
+              <th>พิกัดน้ำหนัก</th>
+              <th>eco-post<br><small>ปกติ / ห่างไกล</small></th>
+              <th>EMS ในประเทศ<br><small>ปกติ / ห่างไกล</small></th>
+            </tr>
+          </thead>
+          <tbody>
+            ${RATE_TABLE.map(t=>`
+              <tr>
+                <td>${t.w}</td>
+                <td>฿${t.ecoN} / <b class="hl">฿${t.ecoR}</b></td>
+                <td>฿${t.emsN} / <b class="hl">฿${t.emsR}</b></td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+        <div style="margin-top:12px;padding:10px;border-radius:10px;background:rgba(255,176,32,0.1);border:1px solid rgba(255,176,32,0.3);font-size:12px;line-height:1.5;color:#ffe2a8">
+          ⭐ <b>เงื่อนไขยกเว้น:</b> กรณีต้นทางและปลายทางอยู่ในกลุ่มพื้นที่เดียวกัน (กลุ่ม 1–34) <b>ไม่คิดค่าบริการเพิ่ม</b>
+        </div>
+      </div>
+    `;
+  } else if(dbTab === 'scanned'){
+    bodyHTML = `
+      <div class="db-sec">
+        <div class="db-sec-h">📋 รายการที่สแกนได้ในใบนำส่งนี้ (${scannedMatches.length} แถว)</div>
+        ${scannedMatches.length ? scannedMatches.map(r=>{
+          const isRem = !!BY_CODE[r.code];
+          return `
+            <div class="db-card ${isRem?'remote':'normal'}">
+              <div class="db-card-top">
+                <b>ลำดับ ${r.seq} · ${r.tracking || 'ไม่มีบาร์โค้ด'}</b>
+                <span class="db-badge ${isRem?'remote':'ok'}">${isRem?'⚠️ พื้นที่ห่างไกล (+20บ.)':'✓ ปลายทางปกติ'}</span>
+              </div>
+              <div class="db-card-sub">
+                รหัส ปณ.: <b>${r.code || '–'}</b> · ค่าบริการ: <b style="color:${isRem?'var(--amber)':'var(--green)'}">${r.price!=null?'฿'+baht(r.price):'–'}</b>
+              </div>
+            </div>
+          `;
+        }).join('') : `<div class="empty">ไม่พบรายการที่สแกน${q?`ที่ตรงกับ "${esc(q)}"`:''}</div>`}
+      </div>
+    `;
+  } else {
+    // Search or All / Island / Remote
+    let scannedSection = '';
+    if(q){
+      scannedSection = `
+        <div class="db-sec">
+          <div class="db-sec-h">📋 ข้อมูลที่พบในใบนำส่งที่สแกนแล้ว (${scannedMatches.length} รายการ)</div>
+          ${scannedMatches.length ? scannedMatches.map(r=>{
+            const isRem = !!BY_CODE[r.code];
+            return `
+              <div class="db-card ${isRem?'remote':'normal'}">
+                <div class="db-card-top">
+                  <b>ลำดับ ${r.seq} · ${r.tracking || 'EQ...'}</b>
+                  <span class="db-badge ${isRem?'remote':'ok'}">${isRem?'⚠️ พื้นที่ห่างไกล (+20บ.)':'✓ ปกติ'}</span>
+                </div>
+                <div class="db-card-sub">
+                  รหัส ปณ.: <b>${r.code || '–'}</b> · ค่าบริการ: <b style="color:${isRem?'var(--amber)':'var(--green)'}">${r.price!=null?'฿'+baht(r.price):'–'}</b>
+                </div>
+              </div>
+            `;
+          }).join('') : `<div style="font-size:12px;color:var(--muted);padding:4px 0">ไม่มีรายการที่ตรงกับ "${esc(q)}" ในใบนำส่งที่สแกนไว้</div>`}
+        </div>
+      `;
+    }
+
+    let refSection = '';
+    if(isNormalZip){
+      refSection = `
+        <div class="db-sec">
+          <div class="db-sec-h">📖 ฐานข้อมูลอ้างอิง 85 พื้นที่ห่างไกล/เกาะ</div>
+          <div class="db-card normal" style="border-color:rgba(74,222,128,0.4);background:rgba(74,222,128,0.06)">
+            <div class="db-card-top">
+              <b>รหัสไปรษณีย์ ${esc(q)}</b>
+              <span class="db-badge ok">✓ ปลายทางปกติ</span>
+            </div>
+            <div class="db-card-sub" style="margin-top:4px">
+              ไม่อยู่ใน 85 พื้นที่ห่างไกลหรือเกาะของไปรษณีย์ไทย
+            </div>
+            <div class="db-card-rule">
+              ✓ ไม่คิดค่าบริการบวกเพิ่ม +20 บาท (คิดอัตราปกติทั่วไทย)
+            </div>
+          </div>
+        </div>
+      `;
+    } else {
+      refSection = `
+        <div class="db-sec">
+          <div class="db-sec-h">📖 ฐานข้อมูลอ้างอิง 85 พื้นที่ห่างไกล/เกาะ (${dataMatches.length} แห่ง)</div>
+          ${dataMatches.length ? dataMatches.map(([seq, group, prov, office, code, area, isIsland])=>{
+            return `
+              <div class="db-card ${isIsland?'island':'remote'}">
+                <div class="db-card-top">
+                  <b>#${seq} · ${office} (${prov})</b>
+                  <span class="db-badge ${isIsland?'island':'remote'}">${isIsland?'🏝️ พื้นที่เกาะ':'⛰️ พื้นที่ห่างไกล'}</span>
+                </div>
+                <div class="db-card-sub">
+                  รหัส ปณ. <b style="color:var(--amber);font-size:14px">${code}</b> · กลุ่มพื้นที่: <b>${group}</b>
+                </div>
+                <div class="db-card-sub">
+                  พื้นที่: <b>${area || 'ทุกพื้นที่ของรหัสไปรษณีย์'}</b>
+                </div>
+                <div class="db-card-rule">
+                  • บวกเพิ่ม +20 บาท (ยกเว้นต้นทาง-ปลายทางอยู่ในกลุ่ม ${group} เดียวกัน)
+                </div>
+              </div>
+            `;
+          }).join('') : `<div class="empty">ไม่พบข้อมูลที่ตรงกับ "${esc(q)}"</div>`}
+        </div>
+      `;
+    }
+
+    bodyHTML = scannedSection + refSection;
+  }
+
+  $('dbModalIn').innerHTML = `
+    <div class="db-header">
+      <h3>🔍 ค้นหารหัส & 85 พื้นที่ห่างไกล</h3>
+      <button class="db-close" id="dbClose">✕</button>
+    </div>
+    <div class="db-search-wrap">
+      <span class="db-search-icon">🔍</span>
+      <input id="dbSearch" type="search" placeholder="พิมพ์รหัส ปณ. เช่น 10500, 96120 หรือชื่อเกาะ, อำเภอ..." value="${esc(dbQuery)}" autocomplete="off">
+      <button class="db-search-clear" id="dbClearSearch" ${dbQuery?'':'hidden'}>✕</button>
+    </div>
+    <div class="db-tabs">
+      <button class="db-tab ${dbTab==='all'?'active':''}" data-tab="all">📌 ทั้งหมด (85)</button>
+      <button class="db-tab ${dbTab==='island'?'active':''}" data-tab="island">🏝️ เฉพาะเกาะ (22)</button>
+      <button class="db-tab ${dbTab==='remote'?'active':''}" data-tab="remote">⛰️ ห่างไกล (63)</button>
+      <button class="db-tab ${dbTab==='scanned'?'active':''}" data-tab="scanned">📋 ที่สแกนได้ (${scannedCount})</button>
+      <button class="db-tab ${dbTab==='rates'?'active':''}" data-tab="rates">📊 ตารางค่าบริการ</button>
+    </div>
+    <div class="db-list">
+      ${bodyHTML}
+    </div>
+  `;
+
+  // Attach events
+  $('dbClose').onclick = closeDbModal;
+  const sInp = $('dbSearch');
+  sInp.oninput = (e) => {
+    dbQuery = e.target.value;
+    $('dbClearSearch').hidden = !dbQuery;
+    renderDbModal();
+  };
+  $('dbClearSearch').onclick = () => {
+    dbQuery = '';
+    renderDbModal();
+    $('dbSearch').focus();
+  };
+  $('dbModalIn').querySelectorAll('.db-tab').forEach(btn => {
+    btn.onclick = () => {
+      dbTab = btn.dataset.tab;
+      renderDbModal();
+    };
+  });
+}
+
+$('dbBtn').onclick = () => openDbModal('all');
+$('dbModal').onclick = (e) => { if(e.target.id === 'dbModal') closeDbModal(); };
 
 /* ================= Google Glass Audio Chimes & Haptics ================= */
 let actx=null;
