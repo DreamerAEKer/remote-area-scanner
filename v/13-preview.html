@@ -261,7 +261,7 @@ function classifyRemote(code, rowText=''){
     };
   }
 }
-const APP_VERSION='v25';   // shown in the app; every version is listed at versions.html
+const APP_VERSION='v26';   // shown in the app; every version is listed at versions.html
 const $=id=>document.getElementById(id);
 document.addEventListener('DOMContentLoaded',()=>{ const v=$('ver'); if(v) v.textContent=APP_VERSION; });
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -305,12 +305,60 @@ function mergeSheets(S){
   refreshUI();
   toast(`✓ รวมข้อมูลทุกใบเข้าด้วยกันเป็นใบเดียวแล้ว (${Object.keys(target.rows).length} แถว)`, true);
 }
+function sanitizeSheets(S){
+  if(!S || !S.sheets) return;
+  let changed = false;
+  for(const sh of S.sheets){
+    if(!sh.rows) continue;
+    const entries = Object.entries(sh.rows).map(([seq, r]) => ({seq: +seq, r, serial: topVote(r.trk)}));
+    const withSerial = entries.filter(x => x.serial != null);
+    if(withSerial.length >= 1){
+      const minSerial = Math.min(...withSerial.map(x => x.serial));
+      // In Thailand Post manifests, Page 1 has 37 items. If minSerial is e.g. 42094902,
+      // any serial <= minSerial + 36 belongs to Page 1 (sequences 1 to 37).
+      // If a row has seq > 37 while its serial is <= minSerial + 36, it was shifted by a misread
+      for(const item of entries){
+        if(item.seq > 37 && item.serial != null && item.serial <= minSerial + 36){
+          delete sh.rows[item.seq];
+          const realSeq = (item.serial - minSerial) + 1;
+          if(realSeq >= 1 && realSeq <= 37 && !sh.rows[realSeq]){
+            sh.rows[realSeq] = item.r;
+          }
+          changed = true;
+        }
+      }
+    }
+  }
+  if(changed) persist();
+}
+
+function clearCurrentSheet(){
+  const S=cur(), A=activeSheet(S);
+  A.rows={};
+  A.totals={};
+  A.last={};
+  A.manualTotal=null;
+  A.done=false;
+  buf.clear();
+  totBuf={};
+  liveFeeTags=[];
+  dets=[];
+  seen.clear();
+  live=[];
+  repair=null;
+  saveRepair();
+  persist();
+  refreshUI();
+  toast('ล้างข้อมูลใบนี้แล้ว พร้อมเริ่มสแกนใหม่');
+}
+
 try{
   const v2=JSON.parse(localStorage.getItem(KEY));
   if(v2?.list){ sessions=v2.list; curId=v2.cur; }
   else{ const v1=JSON.parse(localStorage.getItem('ras-sessions-v1'));   // carry over sessions from the first version
     if(v1?.list){ sessions=v1.list.map(o=>({id:o.id,name:o.name,created:o.created,updated:o.updated,loose:o.loose||{},active:'a',
       sheets:[{id:'a',no:1,rows:Object.fromEntries(Object.entries(o.rows).map(([k,r])=>[k,{price:r.price,code:r.code,trk:{}}])),totals:o.totals||{},manualTotal:o.manualTotal??null,last:{},done:false}]})); curId=v1.cur; } }
+  if(sessions.length){ for(const s of sessions) sanitizeSheets(s); }
 }catch(e){}
 function persist(){ try{ localStorage.setItem(KEY,JSON.stringify({list:sessions,cur:curId})); }catch(e){} }
 function newSession(){
@@ -319,7 +367,7 @@ function newSession(){
     created:Date.now(),updated:Date.now(),sheets:[],active:null,loose:{}};
   newSheet(S); sessions.unshift(S); curId=S.id; persist(); return S;
 }
-const cur=()=>sessions.find(s=>s.id===curId)||newSession();
+const cur=()=>{ const S=sessions.find(s=>s.id===curId)||newSession(); sanitizeSheets(S); return S; };
 const activeSheet=S=>S.sheets.find(x=>x.id===S.active)||S.sheets.at(-1)||newSheet(S);
 const sheetEmpty=sh=>!Object.keys(sh.rows).length&&!Object.keys(sh.totals).length&&sh.manualTotal==null;
 const isEmpty=S=>S.sheets.every(sheetEmpty)&&!Object.keys(S.loose).length;
@@ -429,10 +477,13 @@ function refreshUI(){
     }
   }
 
-  c.innerHTML=`<div class="t"><span class="beat" id="beat"></span><b>ใบนำส่ง${ss.list.length>1?` (ชุด ${ss.list.length} ใบ)`:''}</b><b class="pct">${known?pct+'%':''}</b><span>${known?`${good}/${a.n}`:`${good}`} แถว · ฿${baht(a.sum)}</span>${a.total!=null?`<span class="m">ในใบ ฿${baht(a.total)}</span>`:'<span class="m">หน้าแรก (ยังไม่รวมเงิน)</span>'}${state}${frameMs&&mode==='cam'?`<span class="m">~${(frameMs/1000).toFixed(1)} วิ/ภาพ</span>`:''}</div>
+  c.innerHTML=`<div class="t"><span class="beat" id="beat"></span><b>ใบนำส่ง${ss.list.length>1?` (ชุด ${ss.list.length} ใบ)`:''}</b><b class="pct">${known?pct+'%':''}</b><span>${known?`${good}/${a.n}`:`${good}`} แถว · ฿${baht(a.sum)}</span>${a.total!=null?`<span class="m">ในใบ ฿${baht(a.total)}</span>`:'<span class="m">หน้าแรก (ยังไม่รวมเงิน)</span>'}${state}${frameMs&&mode==='cam'?`<span class="m">~${(frameMs/1000).toFixed(1)} วิ/ภาพ</span>`:''}
+  <button id="covReset" style="margin-left:auto;background:rgba(255,255,255,0.14);border:1px solid rgba(255,255,255,0.3);color:#fff;border-radius:6px;padding:2px 8px;font-size:11px;font-weight:600;cursor:pointer">🗑️ ล้างสแกนใหม่</button></div>
     <div class="bar"><i style="width:${pct}%"></i></div>
     ${guideHTML}
     ${need?`<div class="fixline">กำลังซ่อม · เหลือ ${need.size?'ลำดับ '+[...need].slice(0,12).join(', ')+(need.size>12?' …':''):'ยอดรวมเงิน'}</div>`:''}${cellsHTML(a,false,need)}`;
+  const crBtn = $('covReset');
+  if(crBtn) crBtn.onclick = (e) => { e.stopPropagation(); clearCurrentSheet(); };
   const snapBtn=$('snapBtn');
   if(snapBtn){
     if(need){
@@ -536,11 +587,19 @@ function tableRows(words){
     const rowLeft = W.filter(x => x.cx < p.cx && Math.abs(x.cy - p.cy) <= rowBandH).sort((a,b) => b.cx - a.cx);
     const rowRight = W.filter(x => x.cx > p.cx && Math.abs(x.cy - p.cy) <= rowBandH).sort((a,b) => a.cx - b.cx);
 
-    let readSeq = (left.at(-1) ? asSeq(left.at(-1).t) : null) ?? (rowLeft.length ? asSeq(rowLeft.at(-1).t) : null);
-    if(readSeq == null && rowLeft.length){
-      for(let i = rowLeft.length - 1; i >= 0; i--){
-        const s = asSeq(rowLeft[i].t);
-        if(s != null){ readSeq = s; break; }
+    // Sequence column ("ลำดับ") is strictly at the far-left margin.
+    // Distance from postcode must be at least 5.5 * p.h. Words closer are in Col 2 (recipient name / address, e.g. "ผู้ชุมนุม 47") and must NEVER be read as sequence!
+    let readSeq = null;
+    const leftmost = rowLeft.length ? rowLeft.at(-1) : null;
+    if(leftmost && (p.cx - leftmost.cx >= 5.5 * Math.max(14, p.h))){
+      const s = asSeq(leftmost.t);
+      if(s != null && s <= 150) readSeq = s;
+    }
+    if(readSeq == null && left.length){
+      const lEnd = left.at(-1);
+      if(lEnd && (p.cx - lEnd.cx >= 5.5 * Math.max(14, p.h))){
+        const s = asSeq(lEnd.t);
+        if(s != null && s <= 150) readSeq = s;
       }
     }
 
@@ -557,18 +616,34 @@ function tableRows(words){
     const trackNo = trkMatch ? trkMatch[0].toUpperCase() : null;
     const rowText = [...rowLeft.slice().reverse(), p, ...rowRight].map(x => x.t).join(' ');
     return {p,y:p.cy,readSeq,code:p.pc,codeWord:p.w,price,priceWord,serial,trackNo,line:[p,...left,...right],rowText};
-  });
+  }).sort((a,b) => a.y - b.y);
 
   // 1. Thailand Post Manifest: Tracking barcode serial runs in 1-to-1 sequence with row number!
   // E.g. EQ420949020TH (seq 1) -> serial = 42094902. Offset = serial - seq.
   const withBoth = rows.filter(r => r.readSeq != null && r.serial != null);
+  // Filter candidates: sequence number must be geometrically sound relative to vertical rank
+  const validBoth = withBoth.filter(r => {
+    const rank = rows.indexOf(r); // 0-indexed top-to-bottom
+    if(r.readSeq < rank + 1) return false;
+    if(r.readSeq > rank + 40) return false; // row at rank 5 cannot be seq 47!
+    return true;
+  });
+
   let baseOffset = null;
-  if(withBoth.length >= 1){
-    baseOffset = median(withBoth.map(r => r.serial - r.readSeq));
+  if(validBoth.length >= 2){
+    const offCounts = {};
+    for(const r of validBoth){
+      const off = r.serial - r.readSeq;
+      offCounts[off] = (offCounts[off] || 0) + 1;
+    }
+    const bestOff = Object.entries(offCounts).sort((a,b) => b[1] - a[1])[0];
+    baseOffset = +bestOff[0];
+  } else if(validBoth.length === 1){
+    baseOffset = validBoth[0].serial - validBoth[0].readSeq;
   } else {
     try{
       const A = activeSheet(cur());
-      const knownInA = Object.entries(A.rows).map(([seq, r]) => ({seq: +seq, serial: topVote(r.trk)})).filter(x => x.serial != null);
+      const knownInA = Object.entries(A.rows).map(([seq, r]) => ({seq: +seq, serial: topVote(r.trk)})).filter(x => x.serial != null && x.seq <= 37);
       if(knownInA.length >= 1){
         baseOffset = median(knownInA.map(x => x.serial - x.seq));
       }
@@ -1349,7 +1424,7 @@ function sheetHTML(S,sh){
     ${v}${unsureNote}${fix}
     ${a.remote.length?`<div class="sec">พื้นที่ห่างไกล / เกาะ (${a.remote.length})</div><div class="list">${a.remote.map(r=>remoteItem({...r,no:sh.no},false)).join('')}</div>`:''}
     ${a.n?`<div class="sec">ค่าบริการแต่ละลำดับ (แตะเพื่อแก้)</div><div class="grid">${grid}</div>`:''}
-    <div class="acts"><button class="pri" id="sUse">📷 สแกนใบนี้ต่อ</button><button class="danger" id="sDelSheet">ลบใบนี้</button></div>`;
+    <div class="acts"><button class="pri" id="sUse">📷 สแกนใบนี้ต่อ</button><button id="sClearThisSheet" style="border-color:var(--amber);color:var(--amber)">🗑️ ล้างข้อมูลใบนี้</button><button class="danger" id="sDelSheet">ลบใบนี้</button></div>`;
 }
 function historyHTML(){
   const list=sessions.filter(s=>!isEmpty(s)||s.id===curId);
@@ -1373,6 +1448,8 @@ function renderSheet(){
     $('sTotal').onchange=e=>{ const v=parseFloat(e.target.value.replace(/,/g,'')); sh.manualTotal=isNaN(v)?null:v; sh.done=false; checkDone(sh); persist(); refreshUI(); };
     $('sUse').onclick=()=>{ S.active=sh.id; persist(); $('sheet').hidden=true; refreshUI(); };
     if($('sToCamS')) $('sToCamS').onclick=()=>{ $('sheet').hidden=true; };
+    const clr=$('sClearThisSheet');
+    if(clr) clr.onclick=()=>{ clearCurrentSheet(); renderSheet(); };
     if($('fixCam')){ $('fixCam').onclick=()=>startRepair(sh,'cam'); $('fixImg').onclick=()=>startRepair(sh,'img'); }
     if($('fixStop')) $('fixStop').onclick=()=>{ repair=null; saveRepair(); refreshUI(); };
     el.querySelectorAll('.gcell').forEach(c=>c.onclick=()=>{
@@ -1406,7 +1483,7 @@ function renderSheet(){
   $('sClose').onclick=()=>$('sheet').hidden=true;
 }
 $('sessBtn').onclick=()=>{ view={k:'sess'}; $('sheet').hidden=false; renderSheet(); };
-$('cov').onclick=()=>{ view={k:'sheet',id:activeSheet(cur()).id}; $('sheet').hidden=false; renderSheet(); };
+$('cov').onclick=e=>{ if(e.target.id==='covReset') return; view={k:'sheet',id:activeSheet(cur()).id}; $('sheet').hidden=false; renderSheet(); };
 $('sheet').onclick=e=>{ if(e.target.id==='sheet') $('sheet').hidden=true; };
 
 /* ================= Google Glass Audio Chimes & Haptics ================= */
